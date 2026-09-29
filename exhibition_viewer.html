@@ -143,6 +143,7 @@
 <div id="detail" class="ui">
   <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
   <label>Beyond</label><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
+  <label for="budget" title="Point clouds and splats with more points are thinned while loading. Moving the slider reloads them.">Import</label><input id="budget" type="range" min="0" max="100" value="50"><output id="budgetOut"></output>
   <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
   <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
   <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
@@ -262,7 +263,7 @@ async function handleFiles(fileList, demo = false) {
     const f = mains[i];
     status(`Loading ${i + 1}/${mains.length}: ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
     try {
-      const ex = await loadFile(f, byName, urlFor);
+      const ex = await loadFile(f, byName, urlFor, p => status(`Simplifying ${i + 1}/${mains.length}: ${f.name} ${Math.round(p * 100)}%`));
       if (demo && userImported) return; // visitor dropped their own files while the demo was loading
       ex.demo = demo;
       addExhibit(ex);
@@ -279,11 +280,15 @@ async function handleFiles(fileList, demo = false) {
   if (exhibits.length) overview();
 }
 
-async function loadFile(file, byName, urlFor) {
-  const e = ext(file.name);
-  const buf = await file.arrayBuffer();
+async function loadFile(file, byName, urlFor, progress) {
+  const slim = await simplify(file, progress);
+  const ex = await parseModel(file.name, slim?.buf || await file.arrayBuffer(), byName, urlFor);
+  return Object.assign(ex, { file, byName, urlFor, total: slim?.total, stride: slim?.stride || 1 });
+}
 
-  if (SPLAT_EXT.includes(e) || (e === 'ply' && isSplatPly(buf))) return loadSplat(file.name, buf);
+async function parseModel(name, buf, byName, urlFor) {
+  const e = ext(name);
+  if (SPLAT_EXT.includes(e) || (e === 'ply' && isSplatPly(buf))) return loadSplat(name, buf);
 
   let obj, zUp = false;
   switch (e) {
@@ -326,7 +331,132 @@ async function loadFile(file, byName, urlFor) {
   obj.traverse(o => { if (o.isPoints) sizePoints(o); });
   let hasMesh = false; content.traverse(o => { if (o.isMesh) hasMesh = true; });
   const samples = hasMesh ? null : pointSamples(content);
-  return { name: file.name, content, localBox: new THREE.Box3().setFromObject(content), samples };
+  return { name, content, localBox: new THREE.Box3().setFromObject(content), samples };
+}
+
+// ---------- import simplification ----------
+// Point clouds and splats above the point budget are thinned while they are read, chunk by chunk,
+// so a 2 GB scan never has to sit in memory whole. Every stride-th point is kept.
+const PLY_SIZE = { float: 4, float32: 4, double: 8, float64: 8, uchar: 1, uint8: 1, char: 1, int8: 1, short: 2, ushort: 2, int16: 2, uint16: 2, int: 4, uint: 4, int32: 4, uint32: 4 };
+const CHUNK = 64e6;         // bytes read per step
+let importBudget = 3e6;     // points per exhibit (slider), Infinity = everything
+const strideFor = n => importBudget === Infinity ? 1 : Math.max(1, Math.ceil(n / importBudget));
+const fmtN = n => n >= 1e6 ? +(n / 1e6).toFixed(1) + ' M' : Math.round(n / 1e3) + ' k';
+
+// null when the format is not thinned; else { total, stride, buf } (buf only when stride > 1)
+async function simplify(file, progress) {
+  const e = ext(file.name);
+  if (e === 'ply') return simplifyPly(file, progress);
+  if (e === 'splat') return thinBinary(file, 0, Math.floor(file.size / 32), 32, [[0, 32]], '', progress);
+  if (['xyz', 'pts', 'txt'].includes(e)) return simplifyText(file, progress);
+  return null;
+}
+
+async function simplifyPly(file, progress) {
+  const text = new TextDecoder().decode(await file.slice(0, 1 << 16).arrayBuffer());
+  const at = text.indexOf('end_header'); if (at < 0) return null;
+  const end = text.indexOf('\n', at) + 1;
+  const els = []; let format = '';
+  for (const l of text.slice(0, at).split('\n')) {
+    const t = l.trim().split(/\s+/);
+    if (t[0] === 'format') format = t[1];
+    else if (t[0] === 'element') els.push({ name: t[1], count: +t[2], props: [] });
+    else if (t[0] === 'property' && els.length) els.at(-1).props.push(t[1] === 'list' ? { list: true } : { type: t[1], name: t[2] });
+  }
+  const [v, ...rest] = els;
+  // only plain vertex files: faces index the vertices, and packed splat PLYs are small already
+  if (!v || v.name !== 'vertex' || rest.some(el => el.count) || v.props.some(p => p.list || !PLY_SIZE[p.type])) return null;
+  // thinned splats also drop their view-dependent colour (f_rest), which is most of their size
+  const splat = v.props.some(p => /^(f_dc_0|scale_0|opacity)$/.test(p.name));
+  const keep = v.props.map(p => !(splat && p.name.startsWith('f_rest_')));
+  const header = `ply\nformat ${format} 1.0\nelement vertex %COUNT%\n`
+    + v.props.filter((_, i) => keep[i]).map(p => `property ${p.type} ${p.name}\n`).join('') + 'end_header\n';
+  if (format === 'binary_little_endian') {
+    const ranges = []; let off = 0;
+    v.props.forEach((p, i) => {
+      const s = PLY_SIZE[p.type], last = ranges.at(-1);
+      if (keep[i]) { if (last && last[1] === off) last[1] += s; else ranges.push([off, off + s]); }
+      off += s;
+    });
+    return thinBinary(file, end, v.count, off, ranges, header, progress);
+  }
+  if (format !== 'ascii') return null;
+  const stride = strideFor(v.count);
+  if (stride === 1) return { total: v.count, stride };
+  const cols = keep.every(Boolean) ? null : keep.flatMap((k, i) => k ? [i] : []);
+  const lines = []; let i = 0;
+  await eachLine(file, end, l => {
+    if (i >= v.count || i++ % stride) return;
+    if (!cols) return lines.push(l);
+    const t = l.trim().split(/\s+/); lines.push(cols.map(c => t[c]).join(' '));
+  }, progress);
+  return { buf: new TextEncoder().encode(header.replace('%COUNT%', lines.length) + lines.join('\n') + '\n').buffer, total: v.count, stride };
+}
+
+// fixed-size records from `start`: keep every stride-th, and of it only the byte ranges given
+async function thinBinary(file, start, n, rs, ranges, header, progress) {
+  const stride = strideFor(n);
+  if (stride === 1) return { total: n, stride };
+  const ors = ranges.reduce((s, [a, b]) => s + b - a, 0), m = Math.ceil(n / stride);
+  const head = new TextEncoder().encode(header.replace('%COUNT%', m));
+  const out = new Uint8Array(head.length + m * ors); out.set(head);
+  const per = stride * Math.max(1, Math.floor(CHUNK / (rs * stride))); // chunks stay aligned to the stride
+  let o = head.length;
+  for (let i = 0; i < n; i += per) {
+    const bytes = new Uint8Array(await file.slice(start + i * rs, start + Math.min(i + per, n) * rs).arrayBuffer());
+    for (let r = 0; (r + 1) * rs <= bytes.length; r += stride)
+      for (const [a, b] of ranges) { out.set(bytes.subarray(r * rs + a, r * rs + b), o); o += b - a; }
+    progress?.(Math.min(i + per, n) / n);
+  }
+  return { buf: out.buffer, total: n, stride };
+}
+
+// text clouds: point count estimated from the first MB
+async function simplifyText(file, progress) {
+  const head = new TextDecoder().decode(await file.slice(0, 1 << 20).arrayBuffer());
+  if (!head.length) return null;
+  const total = Math.round(file.size / (head.length / Math.max(1, head.split('\n').length - 1)));
+  const stride = strideFor(total);
+  if (stride === 1) return { total, stride };
+  const lines = []; let i = 0;
+  await eachLine(file, 0, l => { if (i++ % stride === 0) lines.push(l); }, progress);
+  return { buf: new TextEncoder().encode(lines.join('\n')).buffer, total, stride };
+}
+
+async function eachLine(file, start, onLine, progress) {
+  const reader = file.slice(start).stream().pipeThrough(new TextDecoderStream()).getReader();
+  const size = file.size - start; let rest = '', read = 0, tick = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    read += value.length;
+    const lines = (rest + value).split('\n'); rest = lines.pop();
+    for (const l of lines) onLine(l);
+    if (++tick % 200 === 0) progress?.(read / size);
+  }
+  if (rest) onLine(rest);
+}
+
+// slider moved: reload the exhibits whose thinning changes, from the file they came from
+let reimportChain = Promise.resolve();
+window.exhibition.idle = () => reimportChain; // for testing from the console
+function reimport() {
+  reimportChain = reimportChain.then(async () => {
+    for (const ex of [...exhibits]) {
+      if (ex.total === undefined || strideFor(ex.total) === ex.stride || !exhibits.includes(ex)) continue;
+      status(`Reloading ${ex.name}…`);
+      try {
+        const fresh = await loadFile(ex.file, ex.byName, ex.urlFor, p => status(`Reloading ${ex.name}: ${Math.round(p * 100)}%`));
+        if (!exhibits.includes(ex)) { disposeTree(fresh.content); continue; }
+        ex.pivot.remove(ex.content); disposeTree(ex.content);
+        Object.assign(ex, { content: fresh.content, localBox: fresh.localBox, splat: fresh.splat, samples: fresh.samples,
+          total: fresh.total, stride: fresh.stride, coreKey: undefined, core: undefined, far: undefined });
+        ex.pivot.add(ex.content);
+        layout(); renderList();
+      } catch (err) { console.error(ex.name, err); }
+    }
+    status('');
+  });
 }
 
 function isSplatPly(buf) {
@@ -363,7 +493,7 @@ async function splatSamples(name, buf) {
     const binary = /format binary_little_endian/.test(head);
     const first = (lines.find(l => l.startsWith('element ')) || '').split(/\s+/);
     if (binary && first[1] === 'vertex') {
-      const n = +first[2], SIZE = { float: 4, float32: 4, double: 8, uchar: 1, uint8: 1, char: 1, int8: 1, short: 2, ushort: 2, int16: 2, uint16: 2, int: 4, uint: 4, int32: 4, uint32: 4 };
+      const n = +first[2], SIZE = PLY_SIZE;
       const props = []; let inVertex = false, off = 0;
       for (const l of lines) {
         const t = l.trim().split(/\s+/);
@@ -488,11 +618,11 @@ function parseXYZ(text) {
 }
 
 // ---------- exhibits ----------
-function addExhibit({ name, content, localBox, splat, samples, demo }) {
+function addExhibit(data) {
   const root = new THREE.Group();
   const pivot = new THREE.Group();
-  pivot.add(content); root.add(pivot); scene.add(root);
-  const ex = { name, root, pivot, content, localBox, splat, samples, demo, userScale: 1, lift: 0 };
+  pivot.add(data.content); root.add(pivot); scene.add(root);
+  const ex = { ...data, root, pivot, userScale: 1, lift: 0 };
   exhibits.push(ex);
   drawLabel(ex);
   renderList();
@@ -572,7 +702,8 @@ function renderList() {
     const li = document.createElement('li');
     li.textContent = e.name;
     const k = document.createElement('span'); k.className = 'k';
-    k.textContent = e.demo ? 'demo · drop your own files to replace' : e.splat ? 'splat' : '';
+    k.textContent = e.demo ? 'demo · drop your own files to replace' : [e.splat && 'splat',
+      e.stride > 1 && `${fmtN(e.total)} → ${fmtN(Math.ceil(e.total / e.stride))}`].filter(Boolean).join(' · ');
     li.append(k);
     if (e === selected) li.className = 'sel';
     li.onclick = () => { select(e); flyTo(e); };
@@ -712,9 +843,10 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (!e.shiftKey) keys.delete('shift'); });
 addEventListener('blur', () => keys.clear());
 
+function disposeTree(obj) { obj.traverse(o => { o.geometry?.dispose?.(); o.dispose?.(); }); }
 function removeExhibit(ex) {
   scene.remove(ex.root);
-  ex.root.traverse(o => { o.geometry?.dispose?.(); o.dispose?.(); });
+  disposeTree(ex.root);
   exhibits.splice(exhibits.indexOf(ex), 1);
   exhibits.forEach(drawLabel);
   select(null); layout();
@@ -757,6 +889,13 @@ function readRadius() {
   exhibits.forEach(e => e.far = undefined);
 }
 $('#radius').oninput = readRadius;
+function readBudget() {
+  const v = +$('#budget').value;
+  importBudget = v >= 100 ? Infinity : Math.round(3e6 * Math.pow(10, (v - 50) / 50 * 1.2) / 1e4) * 1e4;
+  $('#budgetOut').textContent = importBudget === Infinity ? 'all' : fmtN(importBudget);
+}
+$('#budget').oninput = readBudget;
+$('#budget').onchange = reimport;
 let showTitles = true;
 $('#titles').onchange = () => { showTitles = $('#titles').checked; exhibits.forEach(e => e.label.visible = showTitles); };
 $('#gap').oninput = () => { slotGap = +$('#gap').value; $('#gapOut').textContent = slotGap + ' m'; layout(); };
@@ -812,7 +951,7 @@ function decimate(mesh) {
 }
 
 // ---------- loop ----------
-applyTheme(); applyCam(); readRadius(); showSpeed();
+applyTheme(); applyCam(); readRadius(); readBudget(); showSpeed();
 const clock = new THREE.Clock();
 let detailClock = 0;
 renderer.setAnimationLoop(() => {
