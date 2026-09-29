@@ -225,8 +225,24 @@ const rhino = new Rhino3dmLoader().setLibraryPath('https://cdn.jsdelivr.net/npm/
 const SPLAT_EXT = ['splat', 'ksplat', 'spz'];
 const MAIN_EXT = ['ply', 'splat', 'ksplat', 'spz', 'glb', 'gltf', 'obj', 'fbx', 'stl', '3dm', 'pcd', 'xyz', 'pts', 'txt'];
 
-async function handleFiles(fileList) {
+// demo exhibit shown on start, replaced by the first files the visitor imports
+const DEMO_URL = 'demo/demo_model.ply';
+let userImported = false;
+async function loadDemo() {
+  try {
+    const res = await fetch(DEMO_URL);
+    if (!res.ok || userImported) return;
+    const file = new File([await res.blob()], 'demo_model.ply');
+    if (!userImported) await handleFiles([file], true);
+  } catch (err) { /* no demo next to the page (e.g. opened from disk): keep the empty screen */ }
+}
+
+async function handleFiles(fileList, demo = false) {
   const files = [...fileList];
+  if (!demo && !userImported) {
+    userImported = true;
+    exhibits.filter(e => e.demo).forEach(removeExhibit);
+  }
   // sidecar files (mtl, bin, textures) resolved by name
   const byName = new Map(files.map(f => [f.name.toLowerCase(), f]));
   const blobUrls = new Map();
@@ -247,6 +263,8 @@ async function handleFiles(fileList) {
     status(`Loading ${i + 1}/${mains.length}: ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
     try {
       const ex = await loadFile(f, byName, urlFor);
+      if (demo && userImported) return; // visitor dropped their own files while the demo was loading
+      ex.demo = demo;
       addExhibit(ex);
       layout(); // show each exhibit as soon as it is in
     } catch (err) {
@@ -470,11 +488,11 @@ function parseXYZ(text) {
 }
 
 // ---------- exhibits ----------
-function addExhibit({ name, content, localBox, splat, samples }) {
+function addExhibit({ name, content, localBox, splat, samples, demo }) {
   const root = new THREE.Group();
   const pivot = new THREE.Group();
   pivot.add(content); root.add(pivot); scene.add(root);
-  const ex = { name, root, pivot, content, localBox, splat, samples, userScale: 1, lift: 0 };
+  const ex = { name, root, pivot, content, localBox, splat, samples, demo, userScale: 1, lift: 0 };
   exhibits.push(ex);
   drawLabel(ex);
   renderList();
@@ -553,7 +571,8 @@ function renderList() {
   exhibits.forEach((e, i) => {
     const li = document.createElement('li');
     li.textContent = e.name;
-    const k = document.createElement('span'); k.className = 'k'; k.textContent = e.splat ? 'splat' : '';
+    const k = document.createElement('span'); k.className = 'k';
+    k.textContent = e.demo ? 'demo · drop your own files to replace' : e.splat ? 'splat' : '';
     li.append(k);
     if (e === selected) li.className = 'sel';
     li.onclick = () => { select(e); flyTo(e); };
@@ -717,6 +736,7 @@ $('#bAdd').onclick = $('#pick').onclick = () => $('#file').click();
 $('#file').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
 
 window.exhibitionReady(files => handleFiles(files));
+loadDemo();
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
