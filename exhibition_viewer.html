@@ -144,6 +144,8 @@
   <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
   <label>Beyond</label><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
   <label for="budget" title="Point clouds and splats with more points are thinned while loading. Moving the slider reloads them.">Import</label><input id="budget" type="range" min="0" max="100" value="50"><output id="budgetOut"></output>
+  <label for="ptSize" title="Point clouds only; splats and meshes are not affected">Points</label><input id="ptSize" type="range" min="-100" max="100" value="0"><output id="ptSizeOut">×1</output>
+  <label>Shape</label><div class="seg"><button id="shSquare" class="on">square</button><button id="shCircle">circle</button></div>
   <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
   <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
   <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
@@ -597,8 +599,9 @@ function sizePoints(p) {
   p.geometry.computeBoundingBox();
   const s = p.geometry.boundingBox.getSize(new THREE.Vector3()).length();
   const n = p.geometry.attributes.position.count;
-  p.material.size = s / Math.cbrt(n) * .9;
+  p.userData.size = s / Math.cbrt(n) * .9;
   p.material.sizeAttenuation = true;
+  stylePoints(p);
 }
 function parseXYZ(text) {
   const pos = [], col = [];
@@ -914,13 +917,39 @@ function updateDetail() {
     setLow(ex, far && detailMode === 'simplify');
   }
 }
+// ---------- point style ----------
+// size multiplier and square/round dots for point clouds (splats and meshes are not affected)
+let pointScale = 1, pointShape = 'square';
+const DOT = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.beginPath(); g.arc(32, 32, 30, 0, Math.PI * 2); g.fill();
+  return new THREE.CanvasTexture(c);
+})();
+function stylePoints(o) {
+  const m = o.material;
+  m.size = o.userData.size * pointScale * (o.userData.low ? Math.cbrt(1 / LOW_POINTS) : 1);
+  const round = pointShape === 'circle';
+  if ((m.alphaMap === DOT) !== round) { m.alphaMap = round ? DOT : null; m.alphaTest = round ? .5 : 0; m.needsUpdate = true; }
+}
+const restylePoints = () => exhibits.forEach(e => e.content.traverse(o => { if (o.isPoints) stylePoints(o); }));
+$('#ptSize').oninput = () => {
+  pointScale = Math.pow(4, +$('#ptSize').value / 100);
+  $('#ptSizeOut').textContent = '×' + +pointScale.toFixed(2);
+  restylePoints();
+};
+const setShape = s => {
+  pointShape = s; restylePoints();
+  $('#shSquare').classList.toggle('on', s === 'square'); $('#shCircle').classList.toggle('on', s === 'circle');
+};
+$('#shSquare').onclick = () => setShape('square');
+$('#shCircle').onclick = () => setShape('circle');
+
 function setLow(ex, low) {
   ex.content.traverse(o => {
     if (o.isPoints) {
       const n = o.geometry.attributes.position.count;
-      o.userData.size ??= o.material.size;
       o.geometry.setDrawRange(0, low ? Math.ceil(n * LOW_POINTS) : Infinity);
-      o.material.size = o.userData.size * (low ? Math.cbrt(1 / LOW_POINTS) : 1);
+      o.userData.low = low; stylePoints(o);
     } else if (o.isMesh && o !== ex.splat) {
       o.userData.full ??= o.geometry;
       if (low && o.userData.low === undefined) o.userData.low = decimate(o);
