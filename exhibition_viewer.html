@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Exhibition</title>
+<style>
+  :root {
+    --bg: #1b1b1a; --fg: #e8e6e1; --muted: #8d8a83; --line: #3a3936;
+    --panel: rgba(27,27,26,.82); --accent: #d9442b;
+  }
+  :root[data-theme="light"] {
+    --bg: #eeece7; --fg: #1d1d1b; --muted: #6f6c66; --line: #cfccc4;
+    --panel: rgba(238,236,231,.86); --accent: #c23a22;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  .ui { position: fixed; background: var(--panel); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  #list { top: 16px; left: 16px; max-width: min(320px, calc(100vw - 32px)); max-height: 45vh; overflow: auto; }
+  #list h1 { font-size: 13px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
+  #list ol { margin: 0; padding-left: 20px; }
+  #list li { cursor: pointer; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #list li.sel { color: var(--accent); }
+  #list li .k { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  #list li.err { color: var(--muted); text-decoration: line-through; }
+  #help { bottom: 16px; left: 16px; color: var(--muted); max-width: calc(100vw - 32px); }
+  #help b { color: var(--fg); font-weight: 600; }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 0 10px 0 0; vertical-align: top; }
+  #version { position: fixed; top: 4px; right: 18px; font-size: 10px; color: var(--muted); letter-spacing: .02em; pointer-events: none; }
+  #bar { top: 20px; right: 16px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; padding: 6px; }
+  button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+  button:hover { border-color: var(--fg); }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  #empty div { text-align: center; color: var(--muted); pointer-events: auto; padding: 16px; }
+  #empty strong { display: block; color: var(--fg); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
+  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: none; pointer-events: none; }
+  body.dragging #drop { display: block; }
+  #status { top: 16px; left: 50%; transform: translateX(-50%); display: none; color: var(--muted); }
+  #detail { bottom: 16px; right: 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; width: min(320px, calc(100vw - 32px)); }
+  #detail label { color: var(--muted); }
+  #detail input[type=range] { width: 100%; accent-color: var(--accent); }
+  #detail output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
+  #detail .seg { grid-column: 2 / 4; display: flex; gap: 4px; }
+  #detail .seg button { flex: 1; padding: 2px 6px; }
+  .hidden { display: none !important; }
+  @media (max-width: 640px) { #help { display: none; } }
+</style>
+<script>
+// Plain script, runs before the 3D libraries: the browser never opens a dropped file itself,
+// drops are queued until the viewer is ready, and a failed start is shown instead of silence.
+(() => {
+  const queue = [];
+  let handler = null;
+  const say = (msg, isErr) => {
+    const s = document.getElementById('status'); if (!s) return;
+    s.style.display = msg ? 'block' : 'none'; s.textContent = msg || '';
+    s.style.color = isErr ? 'var(--accent)' : '';
+  };
+  window.exhibitionReady = h => { handler = h; while (queue.length) handler(queue.shift()); };
+  async function filesFromDrop(dt) {
+    const entries = [...(dt.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    const plain = [...dt.files];
+    if (!entries.length) return plain;
+    const out = [];
+    const walk = async entry => {
+      if (entry.isFile) out.push(await new Promise((res, rej) => entry.file(res, rej)));
+      else if (entry.isDirectory) {
+        const reader = entry.createReader(); let batch;
+        do { batch = await new Promise((res, rej) => reader.readEntries(res, rej)); for (const b of batch) await walk(b); } while (batch.length);
+      }
+    };
+    try { for (const en of entries) await walk(en); } catch (err) { console.warn(err); return plain; }
+    return out;
+  }
+  let depth = 0;
+  addEventListener('dragenter', e => { e.preventDefault(); depth++; document.body.classList.add('dragging'); });
+  addEventListener('dragleave', e => { if (--depth <= 0) { depth = 0; document.body.classList.remove('dragging'); } });
+  addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  addEventListener('drop', async e => {
+    e.preventDefault(); depth = 0; document.body.classList.remove('dragging');
+    const files = await filesFromDrop(e.dataTransfer);
+    if (handler) handler(files);
+    else { queue.push(files); say('Viewer is still starting, your files are queued…'); }
+  });
+  addEventListener('error', e => say('Error: ' + (e.message || 'a script failed to load'), true));
+  addEventListener('load', () => setTimeout(() => {
+    if (!handler) say('The 3D viewer did not start. It needs internet for its libraries (cdn.jsdelivr.net). Reload with Cmd+Shift+R.', true);
+  }, 12000));
+})();
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+  "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@2.2.0/dist/spark.module.js"
+} }
+</script>
+</head>
+<body>
+<div id="empty"><div>
+  <strong>Drop your models here</strong>
+  splats · point clouds · meshes, as many as you like<br>
+  .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts<br><br>
+  <button id="pick">or choose files…</button>
+</div></div>
+<div id="drop"></div>
+
+<div id="list" class="ui hidden"><h1>Exhibition</h1><ol></ol></div>
+
+<div id="version">v0.6 · 29.09.2026 15:12</div>
+<script>
+// date follows the file itself, so it stays right after every edit
+(() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
+  const p = n => String(n).padStart(2, '0');
+  document.getElementById('version').textContent = `v0.6 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+</script>
+<div id="bar" class="ui">
+  <button id="bAdd" title="Add files">+ Add</button>
+  <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
+  <button id="bTheme" title="B">Light</button>
+  <button id="bHelp" title="H">?</button>
+</div>
+
+<div id="help" class="ui"><table>
+  <tr><td><b>Left-drag</b></td><td>orbit around object</td><td><b>Click</b></td><td>select exhibit</td></tr>
+  <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Double-click</b></td><td>fly to exhibit</td></tr>
+  <tr><td><b>Middle-drag</b></td><td>pan</td><td><b>N / P</b></td><td>next / previous exhibit</td></tr>
+  <tr><td><b>W A S D</b></td><td>fly</td><td><b>R</b></td><td>turn selected 90°</td></tr>
+  <tr><td><b>Q / E</b></td><td>up / down</td><td><b>T / F</b></td><td>tip 90° / flip upside-down</td></tr>
+  <tr><td><b>1 / 2</b></td><td>slower / faster</td><td><b>[ ]</b></td><td>smaller / larger</td></tr>
+  <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove selected</td></tr>
+  <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower selected (Shift ×10)</td></tr>
+  <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>put selected back on the floor</td></tr>
+</table></div>
+
+<div id="status" class="ui"></div>
+<div id="detail" class="ui">
+  <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
+  <label>Beyond</label><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
+  <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
+  <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
+  <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
+</div>
+<input id="file" type="file" multiple hidden>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { PCDLoader } from 'three/addons/loaders/PCDLoader.js';
+import { Rhino3dmLoader } from 'three/addons/loaders/3DMLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MeshoptSimplifier } from 'https://cdn.jsdelivr.net/npm/meshoptimizer@0.25.0/meshopt_simplifier.module.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
+
+// ---------- scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 5000);
+camera.position.set(0, 1.6, 8);
+scene.add(new SparkRenderer({ renderer }));
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = .5;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, .6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(5, 10, 7);
+scene.add(sun);
+
+const THEMES = {
+  dark:  { bg: 0x1b1b1a, grid: 0x3a3936, grid2: 0x262624, label: '#e8e6e1' },
+  light: { bg: 0xeeece7, grid: 0xc9c5bc, grid2: 0xdedad2, label: '#1d1d1b' },
+};
+let theme = 'dark';
+let grid;
+function applyTheme() {
+  const t = THEMES[theme];
+  document.documentElement.dataset.theme = theme;
+  scene.background = new THREE.Color(t.bg);
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  grid = new THREE.GridHelper(400, 400, t.grid, t.grid2);
+  grid.renderOrder = -10; // opaque and first: splats write no depth, so a transparent grid would draw on top of them
+  scene.add(grid);
+  exhibits.forEach(e => e.label && drawLabel(e));
+  $('#bTheme').textContent = theme === 'dark' ? 'Light' : 'Dark';
+}
+
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const ext = n => n.toLowerCase().split('.').pop();
+const status = (msg) => { const s = $('#status'); s.style.display = msg ? 'block' : 'none'; s.textContent = msg || ''; };
+
+let slotGap = 2.5;          // metres of empty floor between exhibits (slider)
+const UNIFORM_SIZE = 3;     // largest dimension of each exhibit in uniform mode
+let uniform = true;
+const exhibits = [];        // { name, root, pivot, content, localBox, userScale, label, splat }
+let selected = null;
+window.exhibition = { exhibits, camera, scene }; // for inspection from the console
+
+// ---------- loading ----------
+const gltf = new GLTFLoader()
+  .setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/libs/draco/gltf/'))
+  .setMeshoptDecoder(MeshoptDecoder);
+const rhino = new Rhino3dmLoader().setLibraryPath('https://cdn.jsdelivr.net/npm/rhino3dm@8.4.0/');
+
+const SPLAT_EXT = ['splat', 'ksplat', 'spz'];
+const MAIN_EXT = ['ply', 'splat', 'ksplat', 'spz', 'glb', 'gltf', 'obj', 'fbx', 'stl', '3dm', 'pcd', 'xyz', 'pts', 'txt'];
+
+async function handleFiles(fileList) {
+  const files = [...fileList];
+  // sidecar files (mtl, bin, textures) resolved by name
+  const byName = new Map(files.map(f => [f.name.toLowerCase(), f]));
+  const blobUrls = new Map();
+  const urlFor = name => {
+    const key = decodeURIComponent(name).split(/[\\/]/).pop().toLowerCase();
+    const f = byName.get(key);
+    if (!f) return name;
+    if (!blobUrls.has(key)) blobUrls.set(key, URL.createObjectURL(f));
+    return blobUrls.get(key);
+  };
+  const mains = files.filter(f => MAIN_EXT.includes(ext(f.name)));
+  if (!mains.length) { status('No supported model files in the drop.'); setTimeout(() => status(''), 3000); return; }
+  $('#empty').classList.add('hidden');
+  $('#list').classList.remove('hidden');
+
+  for (let i = 0; i < mains.length; i++) {
+    const f = mains[i];
+    status(`Loading ${i + 1}/${mains.length}: ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
+    try {
+      const ex = await loadFile(f, byName, urlFor);
+      addExhibit(ex);
+      layout(); // show each exhibit as soon as it is in
+    } catch (err) {
+      console.error(f.name, err);
+      const li = document.createElement('li');
+      li.className = 'err'; li.textContent = f.name; li.title = String(err?.message || err);
+      $('#list ol').append(li);
+    }
+  }
+  status('');
+  layout();
+  if (exhibits.length) overview();
+}
+
+async function loadFile(file, byName, urlFor) {
+  const e = ext(file.name);
+  const buf = await file.arrayBuffer();
+
+  if (SPLAT_EXT.includes(e) || (e === 'ply' && isSplatPly(buf))) return loadSplat(file.name, buf);
+
+  let obj, zUp = false;
+  switch (e) {
+    case 'ply': {
+      const geo = new PLYLoader().parse(buf);
+      obj = geo.index ? meshFrom(geo) : pointsFrom(geo);
+      zUp = true; // scanner apps, Rhino and Blender write PLY z-up
+      break;
+    }
+    case 'stl': obj = meshFrom(new STLLoader().parse(buf)); zUp = true; break;
+    case 'glb': obj = (await gltf.parseAsync(buf, '')).scene; break;
+    case 'gltf': {
+      const m = new THREE.LoadingManager(); m.setURLModifier(urlFor);
+      const l = new GLTFLoader(m).setDRACOLoader(gltf.dracoLoader).setMeshoptDecoder(MeshoptDecoder);
+      obj = (await l.parseAsync(new TextDecoder().decode(buf), '')).scene; break;
+    }
+    case 'obj': {
+      const text = new TextDecoder().decode(buf);
+      const loader = new OBJLoader();
+      const mtlName = (text.match(/^mtllib\s+(.+)$/m) || [])[1]?.trim();
+      const mtlFile = mtlName && byName.get(mtlName.split(/[\\/]/).pop().toLowerCase());
+      if (mtlFile) {
+        const m = new THREE.LoadingManager(); m.setURLModifier(urlFor);
+        const mats = new MTLLoader(m).parse(await mtlFile.text(), '');
+        mats.preload(); loader.setMaterials(mats);
+      }
+      obj = loader.parse(text);
+      if (!mtlFile) obj.traverse(o => { if (o.isMesh) o.material = defaultMat(); });
+      break;
+    }
+    case 'fbx': obj = new FBXLoader().parse(buf, ''); break;
+    case 'pcd': obj = new PCDLoader().parse(buf); shufflePoints(obj.geometry); break;
+    case '3dm': obj = await new Promise((res, rej) => rhino.parse(buf, res, rej)); zUp = true; break;
+    case 'xyz': case 'pts': case 'txt': obj = pointsFrom(parseXYZ(new TextDecoder().decode(buf))); break;
+    default: throw new Error('unsupported');
+  }
+  if (zUp) obj.rotation.x = -Math.PI / 2;
+  const content = new THREE.Group(); content.add(obj);
+  content.updateMatrixWorld(true);
+  obj.traverse(o => { if (o.isPoints) sizePoints(o); });
+  let hasMesh = false; content.traverse(o => { if (o.isMesh) hasMesh = true; });
+  const samples = hasMesh ? null : pointSamples(content);
+  return { name: file.name, content, localBox: new THREE.Box3().setFromObject(content), samples };
+}
+
+function isSplatPly(buf) {
+  const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 8192)));
+  const h = head.slice(0, head.indexOf('end_header'));
+  return /property\s+\w+\s+(f_dc_0|scale_0|opacity)\b/.test(h) || /element\s+(chunk)\b/.test(h);
+}
+
+async function loadSplat(name, buf) {
+  const samples = await splatSamples(name, buf);
+  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true });
+  await splat.initialized;
+  // most 3DGS captures come in OpenCV convention (y down): flip to y up
+  splat.quaternion.set(1, 0, 0, 0);
+  const content = new THREE.Group(); content.add(splat);
+  content.updateMatrixWorld(true);
+  return { name, content, localBox: new THREE.Box3(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1)), splat, samples };
+}
+
+// ---------- samples + core box ----------
+// Each scan keeps up to MAX_SAMPLES positions. The floor and the size are read from them,
+// so floaters and loose points around a capture do not count as part of the object.
+const MAX_SAMPLES = 40000;
+
+// splat centres (flipped to y up like the mesh), faint splats left out
+async function splatSamples(name, buf) {
+  const out = [];
+  const push = (x, y, z) => out.push(x, -y, -z);
+  const e = ext(name);
+  if (e === 'ply') {
+    const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 65536)));
+    const end = head.indexOf('end_header') + 'end_header'.length + 1;
+    const lines = head.slice(0, end).split('\n');
+    const binary = /format binary_little_endian/.test(head);
+    const first = (lines.find(l => l.startsWith('element ')) || '').split(/\s+/);
+    if (binary && first[1] === 'vertex') {
+      const n = +first[2], SIZE = { float: 4, float32: 4, double: 8, uchar: 1, uint8: 1, char: 1, int8: 1, short: 2, ushort: 2, int16: 2, uint16: 2, int: 4, uint: 4, int32: 4, uint32: 4 };
+      const props = []; let inVertex = false, off = 0;
+      for (const l of lines) {
+        const t = l.trim().split(/\s+/);
+        if (t[0] === 'element') inVertex = t[1] === 'vertex';
+        else if (t[0] === 'property' && inVertex) { props.push({ type: t[1], name: t[2], off }); off += SIZE[t[1]] || 4; }
+      }
+      const P = Object.fromEntries(props.map(p => [p.name, p]));
+      if (P.x && P.x.type.startsWith('float')) {
+        const dv = new DataView(buf, end), stride = Math.max(1, Math.floor(n / MAX_SAMPLES));
+        for (let i = 0; i < n; i += stride) {
+          const o = i * off;
+          if (P.opacity && 1 / (1 + Math.exp(-dv.getFloat32(o + P.opacity.off, true))) < .3) continue;
+          push(dv.getFloat32(o + P.x.off, true), dv.getFloat32(o + P.y.off, true), dv.getFloat32(o + P.z.off, true));
+        }
+        return new Float32Array(out);
+      }
+    }
+  } else if (e === 'splat') {
+    const dv = new DataView(buf), n = Math.floor(buf.byteLength / 32), stride = Math.max(1, Math.floor(n / MAX_SAMPLES));
+    for (let i = 0; i < n; i += stride) {
+      if (dv.getUint8(i * 32 + 27) < 77) continue;
+      push(dv.getFloat32(i * 32, true), dv.getFloat32(i * 32 + 4, true), dv.getFloat32(i * 32 + 8, true));
+    }
+    return new Float32Array(out);
+  }
+  // other formats: decode once without LoD just to read the centres
+  const tmp = new SplatMesh({ fileBytes: new Uint8Array(buf.slice(0)), fileName: name });
+  await tmp.initialized;
+  const stride = Math.max(1, Math.floor((tmp.numSplats || 1) / MAX_SAMPLES));
+  tmp.forEachSplat((i, c, sc, q, op) => { if (i % stride === 0 && op >= .3) push(c.x, c.y, c.z); });
+  tmp.dispose?.();
+  return out.length ? new Float32Array(out) : null;
+}
+
+function pointSamples(content) {
+  const out = [], v = new THREE.Vector3();
+  content.traverse(o => {
+    if (!o.isPoints) return;
+    const pos = o.geometry.attributes.position, stride = Math.max(1, Math.floor(pos.count / MAX_SAMPLES));
+    for (let i = 0; i < pos.count; i += stride) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); out.push(v.x, v.y, v.z); }
+  });
+  return out.length >= 150 ? new Float32Array(out) : null;
+}
+
+// Box of the object itself, in the frame rotated by q.
+// floor: the lowest dense horizontal layer (ground patch or base plate), searched in the lower 40 %;
+// a pure "densest layer" would pick a dense crossbar halfway up instead.
+// sides and top: percentiles of what stands above that floor.
+function coreBox(samples, q) {
+  const n = samples.length / 3, xs = new Float32Array(n), ys = new Float32Array(n), zs = new Float32Array(n), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    v.set(samples[i * 3], samples[i * 3 + 1], samples[i * 3 + 2]).applyQuaternion(q);
+    xs[i] = v.x; ys[i] = v.y; zs[i] = v.z;
+  }
+  const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))))];
+  const ySorted = ys.slice().sort();
+  const lo = pct(ySorted, .005), hi = pct(ySorted, .995), H = Math.max(hi - lo, 1e-9);
+  const B = 80, hist = new Float32Array(B);
+  for (let i = 0; i < n; i++) { const b = Math.floor((ys[i] - lo) / H * B); if (b >= 0 && b < B) hist[b]++; }
+  const sm = hist.map((_, i) => ((hist[i - 1] || 0) + hist[i] + (hist[i + 1] || 0)) / 3);
+  const th = .4 * Math.max(...sm);
+  let floor = pct(ySorted, .01);
+  const k = sm.findIndex((c, i) => i < B * .4 && c >= th);
+  if (k >= 0) {
+    let best = k;
+    for (let j = k; j < B && sm[j] >= th; j++) if (sm[j] > sm[best]) best = j;
+    floor = lo + (best + .5) / B * H;
+  }
+  const cut = floor + .08 * H, ax = [], ay = [], az = [];
+  for (let i = 0; i < n; i++) if (ys[i] > cut) { ax.push(xs[i]); ay.push(ys[i]); az.push(zs[i]); }
+  if (ax.length < 50) return null;
+  const sx = Float32Array.from(ax).sort(), sy = Float32Array.from(ay).sort(), sz = Float32Array.from(az).sort();
+  return new THREE.Box3(new THREE.Vector3(pct(sx, .005), floor, pct(sz, .005)), new THREE.Vector3(pct(sx, .995), pct(sy, .995), pct(sz, .995)));
+}
+
+function defaultMat() { return new THREE.MeshStandardMaterial({ color: 0xbdb8ad, roughness: .8, side: THREE.DoubleSide }); }
+function meshFrom(geo) {
+  if (!geo.attributes.normal) geo.computeVertexNormals();
+  const m = defaultMat();
+  if (geo.attributes.color) { m.vertexColors = true; m.color.set(0xffffff); }
+  return new THREE.Mesh(geo, m);
+}
+function shufflePoints(geo) {
+  const n = geo.attributes.position.count;
+  const perm = new Uint32Array(n); for (let i = 0; i < n; i++) perm[i] = i;
+  for (let i = n - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; const t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+  for (const key of Object.keys(geo.attributes)) {
+    const a = geo.attributes[key], sz = a.itemSize, src = a.array, dst = new src.constructor(src.length);
+    for (let i = 0; i < n; i++) for (let k = 0; k < sz; k++) dst[i * sz + k] = src[perm[i] * sz + k];
+    geo.setAttribute(key, new THREE.BufferAttribute(dst, sz, a.normalized));
+  }
+}
+function pointsFrom(geo) {
+  if (!geo.index) shufflePoints(geo);
+  const m = new THREE.PointsMaterial({ size: .01, sizeAttenuation: true, color: 0xbdb8ad });
+  if (geo.attributes.color) { m.vertexColors = true; m.color.set(0xffffff); }
+  return new THREE.Points(geo, m);
+}
+// point size relative to the cloud's own extent, so it reads at any unit
+function sizePoints(p) {
+  p.geometry.computeBoundingBox();
+  const s = p.geometry.boundingBox.getSize(new THREE.Vector3()).length();
+  const n = p.geometry.attributes.position.count;
+  p.material.size = s / Math.cbrt(n) * .9;
+  p.material.sizeAttenuation = true;
+}
+function parseXYZ(text) {
+  const pos = [], col = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim().split(/[\s,;]+/).map(Number);
+    if (t.length < 3 || t.slice(0, 3).some(isNaN)) continue;
+    pos.push(t[0], t[2], -t[1]); // z up → y up
+    if (t.length >= 6 && !t.slice(3, 6).some(isNaN)) {
+      const d = Math.max(t[3], t[4], t[5]) > 1 ? 255 : 1;
+      col.push(t[3] / d, t[4] / d, t[5] / d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  if (col.length === pos.length) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return g;
+}
+
+// ---------- exhibits ----------
+function addExhibit({ name, content, localBox, splat, samples }) {
+  const root = new THREE.Group();
+  const pivot = new THREE.Group();
+  pivot.add(content); root.add(pivot); scene.add(root);
+  const ex = { name, root, pivot, content, localBox, splat, samples, userScale: 1, lift: 0 };
+  exhibits.push(ex);
+  drawLabel(ex);
+  renderList();
+}
+
+function drawLabel(ex) {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 140;
+  const g = c.getContext('2d');
+  g.fillStyle = THEMES[theme].label;
+  g.font = '500 64px -apple-system, Helvetica Neue, Arial, sans-serif';
+  g.textBaseline = 'middle';
+  const idx = String(exhibits.indexOf(ex) + 1).padStart(2, '0');
+  g.fillText(`${idx}  ${ex.name}`, 8, 70, 1008);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  if (ex.label) { ex.label.material.map.dispose(); ex.label.material.map = tex; ex.label.material.needsUpdate = true; return; }
+  ex.label = new THREE.Mesh(new THREE.PlaneGeometry(1, 140 / 1024),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  ex.label.rotation.x = -Math.PI / 2;
+  ex.label.position.y = .005;
+  ex.label.visible = showTitles;
+  ex.root.add(ex.label);
+}
+
+// fit pivot (rotation + scale) into its slot: centred in x/z, standing on the floor
+function fitExhibit(ex) {
+  // box at scale 1 in the current orientation: core box for scans, plain bounds for meshes
+  let b = null;
+  if (ex.samples) {
+    const key = ex.pivot.quaternion.toArray().map(v => v.toFixed(4)).join();
+    if (ex.coreKey !== key) { ex.coreKey = key; ex.core = coreBox(ex.samples, ex.pivot.quaternion); }
+    if (ex.core) b = ex.core.clone();
+  }
+  if (!b) b = ex.localBox.clone().applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(ex.pivot.quaternion));
+  const size = b.getSize(new THREE.Vector3());
+  const sc = (uniform ? UNIFORM_SIZE / Math.max(size.x, size.y, size.z, 1e-6) : 1) * ex.userScale;
+  ex.pivot.scale.setScalar(sc);
+  b.min.multiplyScalar(sc); b.max.multiplyScalar(sc);
+  const c = b.getCenter(new THREE.Vector3());
+  const lift = ex.lift * (b.max.y - b.min.y);
+  ex.pivot.position.set(-c.x, -b.min.y + lift, -c.z);
+  ex.box = b.translate(new THREE.Vector3(-c.x, -b.min.y + lift, -c.z)); // in root space
+  const fp = ex.box.getSize(new THREE.Vector3());
+  const w = THREE.MathUtils.clamp(fp.x, 1.5, 2.5) * 1.6;
+  ex.label.scale.setScalar(w);
+  ex.label.position.set(-Math.max(fp.x, 1.5) / 2 + w / 2, .005, fp.z / 2 + .4);
+}
+
+// grid of equal slots, rows walk away from the entrance
+function layout() {
+  if (!exhibits.length) return;
+  exhibits.forEach(fitExhibit);
+  const slot = Math.max(...exhibits.map(e => { const s = e.box.getSize(new THREE.Vector3()); return Math.max(s.x, s.z); })) + slotGap;
+  const cols = Math.ceil(Math.sqrt(exhibits.length));
+  exhibits.forEach((e, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    // odd rows shift half a slot, so nothing hides straight behind the exhibit you look at
+    e.root.position.set((col - (cols - 1) / 2 + (row % 2) * .5) * slot, 0, -row * slot);
+    e.root.updateMatrixWorld(true);
+  });
+  updateSelection();
+}
+
+function worldBox(ex) { return ex.box.clone().translate(ex.root.position); }
+
+// ---------- selection ----------
+const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xd9442b);
+selBox.visible = false; scene.add(selBox);
+function select(ex) { selected = ex; updateSelection(); renderList(); }
+function updateSelection() {
+  selBox.visible = !!selected;
+  if (selected) selBox.box.copy(worldBox(selected));
+}
+function renderList() {
+  const ol = $('#list ol');
+  ol.querySelectorAll('li:not(.err)').forEach(l => l.remove());
+  exhibits.forEach((e, i) => {
+    const li = document.createElement('li');
+    li.textContent = e.name;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = e.splat ? 'splat' : '';
+    li.append(k);
+    if (e === selected) li.className = 'sel';
+    li.onclick = () => { select(e); flyTo(e); };
+    ol.insertBefore(li, ol.querySelector('li.err'));
+  });
+}
+
+// ---------- camera: fly controls ----------
+let yaw = 0, pitch = -.15;
+const keys = new Set();
+let speed = 3;              // base speed, set by the scale of what you fly to
+let speedMul = 1;           // 1 / 2 keys
+let tween = null;
+function showSpeed() { $('#speedOut').textContent = '×' + (speedMul >= 1 ? +speedMul.toFixed(1) : +speedMul.toFixed(2)); }
+
+function lookDir() { return new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)); }
+function setLook(dir) { dir = dir.clone().normalize(); pitch = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)); yaw = Math.atan2(-dir.x, -dir.z); }
+function applyCam() { camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')); }
+
+function flyTo(ex) {
+  const b = worldBox(ex), c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+  const r = Math.max(s.x, s.y, s.z);
+  const dist = r / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.8 + r / 2;
+  const to = new THREE.Vector3(c.x, c.y + r * .25, c.z + dist);
+  animateTo(to, c);
+  speed = Math.max(r, .5);
+}
+function overview() {
+  const b = new THREE.Box3(); exhibits.forEach(e => b.union(worldBox(e)));
+  const c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+  const r = Math.max(s.x, s.z, s.y) / Math.min(camera.aspect, 1);
+  animateTo(new THREE.Vector3(c.x, c.y + r * .8, b.max.z + r * .8), c);
+  speed = Math.max(r / 6, 1);
+}
+function animateTo(pos, target) {
+  const fromPos = camera.position.clone();
+  const fromQ = camera.quaternion.clone();
+  const m = new THREE.Matrix4().lookAt(pos, target, new THREE.Vector3(0, 1, 0));
+  const toQ = new THREE.Quaternion().setFromRotationMatrix(m);
+  tween = { t: 0, fromPos, pos, fromQ, toQ, target };
+}
+
+const dom = renderer.domElement;
+let drag = null;
+dom.addEventListener('pointerdown', e => {
+  dom.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, moved: false };
+  if (e.button === 0) drag.pivot = orbitPivot(e);
+});
+// orbit around the object under the cursor, else the selected one, else a point ahead
+function orbitPivot(e) {
+  const ex = pick(e) || selected;
+  if (ex) return worldBox(ex).getCenter(new THREE.Vector3());
+  return camera.position.clone().addScaledVector(lookDir(), Math.max(speed * 2, 3));
+}
+function orbit(pivot, ay, ap) {
+  const np = THREE.MathUtils.clamp(pitch + ap, -1.5, 1.5); ap = np - pitch;
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ay)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(right, ap));
+  camera.position.sub(pivot).applyQuaternion(q).add(pivot);
+  yaw += ay; pitch = np; applyCam();
+}
+dom.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
+  if (!drag.moved) return;
+  tween = null;
+  if (drag.button === 0) {
+    orbit(drag.pivot, -dx * .006, -dy * .006);
+  } else if (drag.button === 2) {
+    yaw -= dx * .004; pitch = THREE.MathUtils.clamp(pitch - dy * .004, -1.55, 1.55);
+    applyCam();
+  } else {
+    const k = speed * speedMul * .004;
+    camera.translateX(-dx * k); camera.translateY(dy * k);
+  }
+});
+dom.addEventListener('pointerup', e => {
+  if (drag && !drag.moved && drag.button === 0) select(pick(e));
+  drag = null;
+});
+dom.addEventListener('dblclick', e => { const ex = pick(e); if (ex) { select(ex); flyTo(ex); } });
+dom.addEventListener('contextmenu', e => e.preventDefault());
+dom.addEventListener('wheel', e => {
+  e.preventDefault(); tween = null;
+  camera.position.addScaledVector(lookDir(), -Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100) * .004 * speed * speedMul);
+}, { passive: false });
+
+const ray = new THREE.Raycaster();
+function pick(e) {
+  ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1), camera);
+  let best = null, bestD = Infinity; const p = new THREE.Vector3();
+  for (const ex of exhibits) {
+    if (ray.ray.intersectBox(worldBox(ex), p)) {
+      const d = p.distanceTo(ray.ray.origin);
+      if (d < bestD) { bestD = d; best = ex; }
+    }
+  }
+  return best;
+}
+
+// ---------- keyboard ----------
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey) return;
+  const k = e.key.toLowerCase();
+  keys.add(k); if (e.shiftKey) keys.add('shift');
+  if ('wasdqe'.includes(k) && k.length === 1) tween = null;
+  if (e.code === 'Digit1') { speedMul = Math.max(speedMul / 1.5, .05); showSpeed(); }
+  if (e.code === 'Digit2') { speedMul = Math.min(speedMul * 1.5, 200); showSpeed(); }
+  const i = selected ? exhibits.indexOf(selected) : -1;
+  switch (k) {
+    case 'n': case ' ': if (exhibits.length) { const ex = exhibits[(i + 1) % exhibits.length]; select(ex); flyTo(ex); } e.preventDefault(); break;
+    case 'p': if (exhibits.length) { const ex = exhibits[(i - 1 + exhibits.length) % exhibits.length]; select(ex); flyTo(ex); } break;
+    case 'o': overview(); break;
+    case 'h': $('#help').classList.toggle('hidden'); break;
+    case 'b': toggleTheme(); break;
+    case 'u': toggleScale(); break;
+  }
+  if (!selected) return;
+  const rotate = (axis, a) => { selected.pivot.rotateOnWorldAxis(axis, a); layout(); };
+  switch (k) {
+    case 'r': rotate(new THREE.Vector3(0, 1, 0), Math.PI / 2); break;
+    case 't': rotate(new THREE.Vector3(1, 0, 0), -Math.PI / 2); break;
+    case 'f': rotate(new THREE.Vector3(0, 0, 1), Math.PI); break;
+    case '[': selected.userScale /= 1.25; layout(); break;
+    case ']': selected.userScale *= 1.25; layout(); break;
+    case 'delete': case 'backspace': removeExhibit(selected); break;
+    case 'escape': select(null); break;
+    case 'arrowup': case 'arrowdown':
+      selected.lift += (k === 'arrowup' ? 1 : -1) * (e.shiftKey ? .1 : .01); layout(); e.preventDefault(); break;
+    case 'g': selected.lift = 0; layout(); break;
+  }
+});
+addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (!e.shiftKey) keys.delete('shift'); });
+addEventListener('blur', () => keys.clear());
+
+function removeExhibit(ex) {
+  scene.remove(ex.root);
+  ex.root.traverse(o => { o.geometry?.dispose?.(); o.dispose?.(); });
+  exhibits.splice(exhibits.indexOf(ex), 1);
+  exhibits.forEach(drawLabel);
+  select(null); layout();
+  if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); }
+}
+
+// ---------- ui ----------
+function toggleTheme() { theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); }
+function toggleScale() {
+  uniform = !uniform; layout();
+  $('#bScale').classList.toggle('on', uniform);
+  $('#bScale').textContent = uniform ? 'Uniform size' : 'Original units';
+  if (exhibits.length) overview();
+}
+$('#bTheme').onclick = toggleTheme;
+$('#bScale').onclick = toggleScale;
+$('#bHelp').onclick = () => $('#help').classList.toggle('hidden');
+$('#bAdd').onclick = $('#pick').onclick = () => $('#file').click();
+$('#file').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
+
+window.exhibitionReady(files => handleFiles(files));
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- detail radius ----------
+// beyond the radius an exhibit is simplified (points thinned, meshes decimated,
+// splats on a coarse LoD) or hidden. Distance is camera to the exhibit's box.
+const LOW_POINTS = .08, LOW_TRIS = .08, LOW_SPLATS = .08;
+let detailMode = 'simplify';
+let radius = Infinity;
+MeshoptSimplifier.ready.then(() => exhibits.forEach(e => e.far = undefined));
+function readRadius() {
+  const v = +$('#radius').value;
+  radius = v >= 100 ? Infinity : 2 * Math.pow(500, v / 100);
+  $('#radiusOut').textContent = radius === Infinity ? 'everywhere' : (radius < 10 ? radius.toFixed(1) : Math.round(radius)) + ' m';
+  exhibits.forEach(e => e.far = undefined);
+}
+$('#radius').oninput = readRadius;
+let showTitles = true;
+$('#titles').onchange = () => { showTitles = $('#titles').checked; exhibits.forEach(e => e.label.visible = showTitles); };
+$('#gap').oninput = () => { slotGap = +$('#gap').value; $('#gapOut').textContent = slotGap + ' m'; layout(); };
+const setMode = m => { detailMode = m; $('#mSimplify').classList.toggle('on', m === 'simplify'); $('#mHide').classList.toggle('on', m === 'hide'); exhibits.forEach(e => e.far = undefined); };
+$('#mSimplify').onclick = () => setMode('simplify');
+$('#mHide').onclick = () => setMode('hide');
+
+function updateDetail() {
+  for (const ex of exhibits) {
+    if (!ex.box) continue;
+    const far = worldBox(ex).distanceToPoint(camera.position) > radius;
+    const key = far + detailMode;
+    if (ex.far === key) continue;
+    ex.far = key;
+    ex.pivot.visible = !(far && detailMode === 'hide');
+    setLow(ex, far && detailMode === 'simplify');
+  }
+}
+function setLow(ex, low) {
+  ex.content.traverse(o => {
+    if (o.isPoints) {
+      const n = o.geometry.attributes.position.count;
+      o.userData.size ??= o.material.size;
+      o.geometry.setDrawRange(0, low ? Math.ceil(n * LOW_POINTS) : Infinity);
+      o.material.size = o.userData.size * (low ? Math.cbrt(1 / LOW_POINTS) : 1);
+    } else if (o.isMesh && o !== ex.splat) {
+      o.userData.full ??= o.geometry;
+      if (low && o.userData.low === undefined) o.userData.low = decimate(o);
+      o.geometry = low && o.userData.low ? o.userData.low : o.userData.full;
+    }
+  });
+  if (ex.splat) ex.splat.lodScale = low ? LOW_SPLATS : 1;
+}
+function decimate(mesh) {
+  const g = mesh.geometry, pos = g.attributes.position;
+  if (Array.isArray(mesh.material) || mesh.isSkinnedMesh || !MeshoptSimplifier.supported) return null;
+  const tris = (g.index ? g.index.count : pos.count) / 3;
+  if (tris < 2000) return null;
+  try {
+    const flat = new THREE.BufferGeometry();
+    const arr = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) { arr[i * 3] = pos.getX(i); arr[i * 3 + 1] = pos.getY(i); arr[i * 3 + 2] = pos.getZ(i); }
+    flat.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    if (g.index) flat.setIndex(g.index.clone());
+    const merged = mergeVertices(flat);
+    const idx = new Uint32Array(merged.index.array);
+    const target = Math.max(3, Math.floor(idx.length * LOW_TRIS / 3) * 3);
+    const [out] = MeshoptSimplifier.simplify(idx, merged.attributes.position.array, 3, target, .05);
+    merged.setIndex(new THREE.BufferAttribute(out, 1));
+    merged.computeVertexNormals();
+    return merged;
+  } catch (err) { console.warn('decimate', err); return null; }
+}
+
+// ---------- loop ----------
+applyTheme(); applyCam(); readRadius(); showSpeed();
+const clock = new THREE.Clock();
+let detailClock = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .1);
+  if (tween) {
+    tween.t = Math.min(tween.t + dt / .9, 1);
+    const s = tween.t * tween.t * (3 - 2 * tween.t);
+    camera.position.lerpVectors(tween.fromPos, tween.pos, s);
+    camera.quaternion.slerpQuaternions(tween.fromQ, tween.toQ, s);
+    if (tween.t >= 1) { setLook(new THREE.Vector3().subVectors(tween.target, tween.pos)); applyCam(); tween = null; }
+  }
+  const v = new THREE.Vector3(
+    (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0),
+    (keys.has('q') ? 1 : 0) - (keys.has('e') ? 1 : 0),
+    (keys.has('s') ? 1 : 0) - (keys.has('w') ? 1 : 0));
+  if (v.lengthSq()) {
+    const m = speed * speedMul * (keys.has('shift') ? 3 : 1) * dt;
+    const fwd = lookDir(), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    camera.position.addScaledVector(right, v.x * m)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), v.y * m)
+      .addScaledVector(fwd, -v.z * m);
+  }
+  if ((detailClock += dt) > .25) { detailClock = 0; updateDetail(); }
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
