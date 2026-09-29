@@ -285,6 +285,8 @@ async function handleFiles(fileList, demo = false) {
 async function loadFile(file, byName, urlFor, progress) {
   const slim = await simplify(file, progress);
   const ex = await parseModel(file.name, slim?.buf || await file.arrayBuffer(), byName, urlFor);
+  // point size follows the full cloud, not what was kept, so it does not change with the import budget
+  if (slim?.stride > 1) ex.content.traverse(o => { if (o.isPoints) { o.userData.size /= Math.cbrt(slim.stride); stylePoints(o); } });
   return Object.assign(ex, { file, byName, urlFor, total: slim?.total, stride: slim?.stride || 1 });
 }
 
@@ -933,8 +935,9 @@ function stylePoints(o) {
 }
 const restylePoints = () => exhibits.forEach(e => e.content.traverse(o => { if (o.isPoints) stylePoints(o); }));
 $('#ptSize').oninput = () => {
-  pointScale = Math.pow(4, +$('#ptSize').value / 100);
-  $('#ptSizeOut').textContent = '×' + +pointScale.toFixed(2);
+  const v = +$('#ptSize').value / 100;
+  pointScale = Math.pow(v < 0 ? 50 : 4, v); // ×0.02 … ×4
+  $('#ptSizeOut').textContent = '×' + +pointScale.toPrecision(2);
   restylePoints();
 };
 const setShape = s => {
