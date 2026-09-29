@@ -1,4 +1,7 @@
 <!doctype html>
+<!-- Gaussian Exhibition. Copyright (C) 2026 Ivan Bagaturiya.
+     Licensed under the GNU Affero General Public License v3.0 or later, see LICENSE.
+     Source: https://github.com/ibagaturiya/gaussian_exhibition -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -31,6 +34,7 @@
   #help table { border-collapse: collapse; }
   #help td { padding: 0 10px 0 0; vertical-align: top; }
   #version { position: fixed; top: 4px; right: 18px; font-size: 10px; color: var(--muted); letter-spacing: .02em; pointer-events: none; }
+  #version a { color: inherit; pointer-events: auto; }
   #bar { top: 20px; right: 16px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; padding: 6px; }
   button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
     border-radius: 4px; padding: 4px 9px; cursor: pointer; }
@@ -113,12 +117,12 @@
 
 <div id="list" class="ui hidden"><h1>Exhibition</h1><ol></ol></div>
 
-<div id="version">v0.6 · 29.09.2026 15:12</div>
+<div id="version"><span id="versionText">v0.6 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('version').textContent = `v0.6 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.6 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
