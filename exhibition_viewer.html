@@ -60,7 +60,12 @@
   .folded .fold::after { content: ' ▸'; }
   #list.folded ol, #detail.folded > :not(.fold) { display: none; }
   #detail .fold { grid-column: 1 / -1; font-weight: 600; margin: 0; font-size: 13px; }
-  @media (pointer: coarse) { body.has-exhibits #touchbar { display: flex; } }
+  .touch-only { display: none; }
+  @media (pointer: coarse) {
+    body.has-exhibits #touchbar { display: flex; }
+    .touch-only { display: revert; }
+    .desk-only { display: none; }
+  }
   @media (max-width: 640px) {
     #help { display: none; }
     body { font-size: 14px; }
@@ -109,24 +114,37 @@
     if (handler) handler(files);
     else { queue.push(files); say('Viewer is still starting, your files are queued…'); }
   });
+  const deliver = files => { if (handler) handler(files); else { queue.push(files); say('Viewer is still starting, your files are queued…'); } };
+  const MODEL_URL = /^https?:\/\/\S+\.(ply|splat|ksplat|spz|glb|gltf|obj|fbx|stl|3dm|pcd|xyz|pts)(\?\S*)?$/i;
+  const firstWord = t => (t || '').trim().split(/\s+/)[0];
+  async function loadModelUrl(url) {
+    const name = url.split('/').pop().split('?')[0];
+    say('Downloading ' + name + '…');
+    try {
+      const r = await fetch(url); if (!r.ok) throw new Error(r.status);
+      const file = new File([await r.blob()], decodeURIComponent(name));
+      say(''); deliver([file]);
+    } catch (err) { say('Could not load that link (' + err.message + '). Download the file and add it instead.', true); }
+  }
   // paste: files copied in Finder / Explorer, or a link to a model file
-  addEventListener('paste', async e => {
+  addEventListener('paste', e => {
     if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
     const cd = e.clipboardData; if (!cd) return;
-    let files = [...(cd.files || [])];
-    if (!files.length) {
-      const url = (cd.getData('text/uri-list') || cd.getData('text/plain') || '').trim().split(/\s+/)[0];
-      if (!/^https?:\/\/\S+\.(ply|splat|ksplat|spz|glb|gltf|obj|fbx|stl|3dm|pcd|xyz|pts)(\?\S*)?$/i.test(url)) return;
-      e.preventDefault();
-      say('Downloading ' + url.split('/').pop().split('?')[0] + '…');
-      try {
-        const r = await fetch(url); if (!r.ok) throw new Error(r.status);
-        files = [new File([await r.blob()], decodeURIComponent(url.split('/').pop().split('?')[0]))];
-        say('');
-      } catch (err) { say('Could not load that link (' + err.message + '). Download the file and drop it instead.', true); return; }
-    }
-    e.preventDefault();
-    if (handler) handler(files); else { queue.push(files); say('Viewer is still starting, your files are queued…'); }
+    const files = [...(cd.files || [])];
+    if (files.length) { e.preventDefault(); return deliver(files); }
+    const url = firstWord(cd.getData('text/uri-list') || cd.getData('text/plain'));
+    if (MODEL_URL.test(url)) { e.preventDefault(); loadModelUrl(url); }
+  });
+  // Paste buttons (touch devices): pages may only read text from the clipboard, so this takes model links
+  addEventListener('click', async e => {
+    if (!e.target.closest?.('.paste-btn')) return;
+    const hint = msg => { say(msg, true); setTimeout(() => { if (document.getElementById('status').textContent === msg) say(''); }, 5000); };
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch (err) { return hint('Clipboard not available here. Use + Add to choose files.'); }
+    const url = firstWord(text);
+    if (MODEL_URL.test(url)) loadModelUrl(url);
+    else hint('No model link in the clipboard. Copy a link to a .ply / .glb / … file, or use + Add for files.');
   });
   addEventListener('error', e => say('Error: ' + (e.message || 'a script failed to load'), true));
   addEventListener('load', () => setTimeout(() => {
@@ -148,21 +166,23 @@
   splats · point clouds · meshes, as many as you like<br>
   .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts<br><br>
   <button id="pick">or choose files…</button>
-  <div style="margin-top:8px">or paste them: copy files in the Finder, then ⌘V here</div>
+  <div class="desk-only" style="margin-top:8px">or paste them: copy files in the Finder, then ⌘V here</div>
+  <div class="touch-only" style="margin-top:8px"><button class="paste-btn">or paste a link</button></div>
 </div></div>
 <div id="drop"></div>
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.7 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.8 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.7 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.8 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
+  <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
