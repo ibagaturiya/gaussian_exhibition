@@ -5,7 +5,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Scan Exhibition</title>
 <style>
   :root {
@@ -53,7 +53,24 @@
   #detail .seg { grid-column: 2 / 4; display: flex; gap: 4px; }
   #detail .seg button { flex: 1; padding: 2px 6px; }
   .hidden { display: none !important; }
-  @media (max-width: 640px) { #help { display: none; } }
+  #touchbar { bottom: 16px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; padding: 6px; }
+  #touchbar button { min-width: 44px; min-height: 40px; font-size: 15px; }
+  .fold { cursor: pointer; user-select: none; }
+  .fold::after { content: ' ▾'; color: var(--muted); }
+  .folded .fold::after { content: ' ▸'; }
+  #list.folded ol, #detail.folded > :not(.fold) { display: none; }
+  #detail .fold { grid-column: 1 / -1; font-weight: 600; margin: 0; font-size: 13px; }
+  @media (pointer: coarse) { body.has-exhibits #touchbar { display: flex; } }
+  @media (max-width: 640px) {
+    #help { display: none; }
+    body { font-size: 14px; }
+    .ui { padding: 8px 10px; }
+    #list { top: 66px; left: 10px; max-width: calc(100vw - 20px); max-height: 35vh; }
+    #bar { top: 16px; right: 10px; left: 10px; justify-content: flex-start; }
+    #bar button { min-height: 34px; }
+    #detail { right: 10px; bottom: 76px; width: min(300px, calc(100vw - 20px)); }
+    #version { right: 10px; }
+  }
 </style>
 <script>
 // Plain script, runs before the 3D libraries: the browser never opens a dropped file itself,
@@ -92,6 +109,25 @@
     if (handler) handler(files);
     else { queue.push(files); say('Viewer is still starting, your files are queued…'); }
   });
+  // paste: files copied in Finder / Explorer, or a link to a model file
+  addEventListener('paste', async e => {
+    if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+    const cd = e.clipboardData; if (!cd) return;
+    let files = [...(cd.files || [])];
+    if (!files.length) {
+      const url = (cd.getData('text/uri-list') || cd.getData('text/plain') || '').trim().split(/\s+/)[0];
+      if (!/^https?:\/\/\S+\.(ply|splat|ksplat|spz|glb|gltf|obj|fbx|stl|3dm|pcd|xyz|pts)(\?\S*)?$/i.test(url)) return;
+      e.preventDefault();
+      say('Downloading ' + url.split('/').pop().split('?')[0] + '…');
+      try {
+        const r = await fetch(url); if (!r.ok) throw new Error(r.status);
+        files = [new File([await r.blob()], decodeURIComponent(url.split('/').pop().split('?')[0]))];
+        say('');
+      } catch (err) { say('Could not load that link (' + err.message + '). Download the file and drop it instead.', true); return; }
+    }
+    e.preventDefault();
+    if (handler) handler(files); else { queue.push(files); say('Viewer is still starting, your files are queued…'); }
+  });
   addEventListener('error', e => say('Error: ' + (e.message || 'a script failed to load'), true));
   addEventListener('load', () => setTimeout(() => {
     if (!handler) say('The 3D viewer did not start. It needs internet for its libraries (cdn.jsdelivr.net). Reload with Cmd+Shift+R.', true);
@@ -112,17 +148,18 @@
   splats · point clouds · meshes, as many as you like<br>
   .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts<br><br>
   <button id="pick">or choose files…</button>
+  <div style="margin-top:8px">or paste them: copy files in the Finder, then ⌘V here</div>
 </div></div>
 <div id="drop"></div>
 
-<div id="list" class="ui hidden"><h1>Exhibition</h1><ol></ol></div>
+<div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.6 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.7 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.6 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.7 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
@@ -145,6 +182,7 @@
 
 <div id="status" class="ui"></div>
 <div id="detail" class="ui">
+  <h1 class="fold">Settings</h1>
   <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
   <label>Beyond</label><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
   <label for="budget" title="Point clouds and splats with more points are thinned while loading. Moving the slider reloads them.">Import</label><input id="budget" type="range" min="0" max="100" value="50"><output id="budgetOut"></output>
@@ -153,6 +191,11 @@
   <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
   <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
   <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
+</div>
+<div id="touchbar" class="ui">
+  <button id="tPrev" aria-label="previous exhibit">‹</button>
+  <button id="tOverview">overview</button>
+  <button id="tNext" aria-label="next exhibit">›</button>
 </div>
 <input id="file" type="file" multiple hidden>
 
@@ -264,6 +307,7 @@ async function handleFiles(fileList, demo = false) {
   if (!mains.length) { status('No supported model files in the drop.'); setTimeout(() => status(''), 3000); return; }
   $('#empty').classList.add('hidden');
   $('#list').classList.remove('hidden');
+  document.body.classList.add('has-exhibits');
 
   for (let i = 0; i < mains.length; i++) {
     const f = mains[i];
@@ -726,6 +770,12 @@ const keys = new Set();
 let speed = 3;              // base speed, set by the scale of what you fly to
 let speedMul = 1;           // 1 / 2 keys
 let tween = null;
+// interrupting a camera flight keeps the view where it is, instead of snapping back
+function stopTween() {
+  if (!tween) return;
+  tween = null;
+  setLook(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)); applyCam();
+}
 function showSpeed() { $('#speedOut').textContent = '×' + (speedMul >= 1 ? +speedMul.toFixed(1) : +speedMul.toFixed(2)); }
 
 function lookDir() { return new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)); }
@@ -756,12 +806,28 @@ function animateTo(pos, target) {
 }
 
 const dom = renderer.domElement;
-let drag = null;
+// mouse: left-drag orbits, right-drag turns the camera, middle-drag pans
+// touch: one finger orbits, two fingers pinch (move in / out), twist (orbit) and slide (pan),
+//        tap selects, double-tap flies to the exhibit
+const pointers = new Map();
+let drag = null, gesture = null, lastTap = null;
 dom.addEventListener('pointerdown', e => {
-  dom.setPointerCapture(e.pointerId);
-  drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, moved: false };
-  if (e.button === 0) drag.pivot = orbitPivot(e);
+  try { dom.setPointerCapture(e.pointerId); } catch {}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  stopTween();
+  if (pointers.size === 1) {
+    drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, moved: false, touch: e.pointerType === 'touch' };
+    if (e.button === 0) drag.pivot = orbitPivot(e);
+  } else if (pointers.size === 2) {
+    drag = null;
+    const g = twoFinger();
+    gesture = { ...g, pivot: orbitPivot({ clientX: g.mx, clientY: g.my }) };
+  }
 });
+function twoFinger() {
+  const [a, b] = [...pointers.values()];
+  return { dist: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+}
 // orbit around the object under the cursor, else the selected one, else a point ahead
 function orbitPivot(e) {
   const ex = pick(e) || selected;
@@ -776,31 +842,56 @@ function orbit(pivot, ay, ap) {
   camera.position.sub(pivot).applyQuaternion(q).add(pivot);
   yaw += ay; pitch = np; applyCam();
 }
+function pan(dx, dy) {
+  const k = speed * speedMul * .004;
+  camera.translateX(-dx * k); camera.translateY(dy * k);
+}
 dom.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (gesture && pointers.size >= 2) {
+    const g = twoFinger();
+    // pinch: fingers apart = move towards what is between them
+    const toward = camera.position.distanceTo(gesture.pivot);
+    camera.position.addScaledVector(lookDir(), (g.dist - gesture.dist) / Math.max(innerWidth, innerHeight) * Math.max(toward, 1) * 2.2);
+    orbit(gesture.pivot, -(g.angle - gesture.angle), 0);
+    pan(g.mx - gesture.mx, g.my - gesture.my);
+    Object.assign(gesture, g);
+    return;
+  }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
-  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true;
+  if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > (drag.touch ? 8 : 4)) drag.moved = true;
   if (!drag.moved) return;
-  tween = null;
   if (drag.button === 0) {
-    orbit(drag.pivot, -dx * .006, -dy * .006);
+    const k = drag.touch ? .008 : .006;
+    orbit(drag.pivot, -dx * k, -dy * k);
   } else if (drag.button === 2) {
     yaw -= dx * .004; pitch = THREE.MathUtils.clamp(pitch - dy * .004, -1.55, 1.55);
     applyCam();
-  } else {
-    const k = speed * speedMul * .004;
-    camera.translateX(-dx * k); camera.translateY(dy * k);
+  } else pan(dx, dy);
+});
+function pointerEnd(e) {
+  pointers.delete(e.pointerId);
+  if (drag && !drag.moved && drag.button === 0 && e.type === 'pointerup') {
+    const ex = pick(e);
+    select(ex);
+    if (drag.touch) {
+      const now = performance.now();
+      if (ex && lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { flyTo(ex); lastTap = null; }
+      else lastTap = { t: now, x: e.clientX, y: e.clientY };
+    }
   }
-});
-dom.addEventListener('pointerup', e => {
-  if (drag && !drag.moved && drag.button === 0) select(pick(e));
-  drag = null;
-});
+  if (pointers.size < 2) gesture = null;
+  drag = null; // lifting one finger of a pinch does not start an orbit
+}
+dom.addEventListener('pointerup', pointerEnd);
+dom.addEventListener('pointercancel', pointerEnd);
 dom.addEventListener('dblclick', e => { const ex = pick(e); if (ex) { select(ex); flyTo(ex); } });
 dom.addEventListener('contextmenu', e => e.preventDefault());
 dom.addEventListener('wheel', e => {
-  e.preventDefault(); tween = null;
+  e.preventDefault(); stopTween();
   camera.position.addScaledVector(lookDir(), -Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100) * .004 * speed * speedMul);
 }, { passive: false });
 
@@ -822,7 +913,7 @@ addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey) return;
   const k = e.key.toLowerCase();
   keys.add(k); if (e.shiftKey) keys.add('shift');
-  if ('wasdqe'.includes(k) && k.length === 1) tween = null;
+  if ('wasdqe'.includes(k) && k.length === 1) stopTween();
   if (e.code === 'Digit1') { speedMul = Math.max(speedMul / 1.5, .05); showSpeed(); }
   if (e.code === 'Digit2') { speedMul = Math.min(speedMul * 1.5, 200); showSpeed(); }
   const i = selected ? exhibits.indexOf(selected) : -1;
@@ -859,7 +950,7 @@ function removeExhibit(ex) {
   exhibits.splice(exhibits.indexOf(ex), 1);
   exhibits.forEach(drawLabel);
   select(null); layout();
-  if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); }
+  if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); document.body.classList.remove('has-exhibits'); }
 }
 
 // ---------- ui ----------
@@ -898,6 +989,13 @@ function readRadius() {
   exhibits.forEach(e => e.far = undefined);
 }
 $('#radius').oninput = readRadius;
+const step = d => { if (!exhibits.length) return; const i = selected ? exhibits.indexOf(selected) : (d > 0 ? -1 : 0); const ex = exhibits[(i + d + exhibits.length) % exhibits.length]; select(ex); flyTo(ex); };
+$('#tPrev').onclick = () => step(-1);
+$('#tNext').onclick = () => step(1);
+$('#tOverview').onclick = () => overview();
+document.querySelectorAll('.fold').forEach(h => h.onclick = () => h.parentElement.classList.toggle('folded'));
+// phones start with the panels folded, so the models get the screen
+if (matchMedia('(max-width: 640px)').matches) { $('#list').classList.add('folded'); $('#detail').classList.add('folded'); }
 function readBudget() {
   const v = +$('#budget').value;
   importBudget = v >= 100 ? Infinity : Math.round(3e6 * Math.pow(10, (v - 50) / 50 * 1.2) / 1e4) * 1e4;

@@ -6,6 +6,8 @@ A browser-based virtual exhibition for 3D scans. Drop gaussian splats, point clo
 
 Supported files: `.ply` `.splat` `.ksplat` `.spz` · `.glb` `.gltf` `.obj` (+`.mtl`) `.fbx` `.stl` `.3dm` `.pcd` `.xyz` `.pts`
 
+Drop, paste (⌘V / Ctrl+V) or choose files. On phones and tablets: one finger orbits, pinch flies in and out, twist rotates, double-tap flies to a model.
+
 Everything runs locally in your browser; files are not uploaded anywhere. Press **H** in the viewer for controls.
 
 ## License
