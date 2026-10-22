@@ -30,6 +30,13 @@ Opening a link needs nothing: no account, no token. Only publishing needs a GitH
 5. **Generate token** and copy it (`github_pat_…`). GitHub shows it only once.
 6. In the viewer click **Publish**, paste it into *GitHub token* and publish. The token is kept in that browser only, so this is once per device; *Forget the token* removes it. Never share it or put it in a link.
 
+**Publish to your own GitHub instead:** anyone with a GitHub account can keep their own shows in their own repo:
+
+1. On [ibagaturiya/exhibitions](https://github.com/ibagaturiya/exhibitions) click **Use this template → Create a new repository**, make it **Public**, any name (e.g. `exhibitions`).
+2. In the new repo: **Settings → Pages → Branch: `main`, `/ (root)` → Save**.
+3. Make a token as above, but for *your* new repo.
+4. In the viewer's Publish panel, enter your repo as `your-name/exhibitions`, paste the token, publish. Links then point to `your-name.github.io/exhibitions/`, and the cleanup in your repo deletes expired shows.
+
 Any saved exhibition can also be opened by URL: `exhibition_viewer.html?open=<url of the zip, or of the unzipped folder>`, from any host that allows cross-site downloads.
 
 Everything runs locally in your browser; files are only uploaded when you click Publish. Press **H** in the viewer for controls.
