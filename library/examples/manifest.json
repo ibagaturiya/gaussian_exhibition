@@ -1,0 +1,6 @@
+[
+  { "file": "plinth.glb", "name": "Plinth 50 × 90", "group": "Furniture", "thumb": "plinth.jpg",
+    "meta": { "size": "0.5 × 0.9 × 0.5 m", "material": "painted MDF" } },
+  { "file": "floor_lamp.glb", "name": "Floor lamp", "group": "Lighting", "thumb": "floor_lamp.jpg",
+    "meta": { "height": "1.6 m", "light": { "type": "point", "color": "#ffd9a0", "intensity": 3, "position": [0, 1.5, 0] } } }
+]

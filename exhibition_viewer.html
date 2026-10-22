@@ -60,8 +60,28 @@
   .folded .fold::after { content: ' ▸'; }
   #list.folded ol, #detail.folded > :not(.fold) { display: none; }
   #detail .fold { grid-column: 1 / -1; font-weight: 600; margin: 0; font-size: 13px; }
+  #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 2px 0 4px; white-space: normal;
+    color: var(--muted); font-size: 11px; }
+  #list li .meta span:nth-child(odd) { color: var(--fg); }
+  #library { top: 66px; right: 16px; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 82px);
+    display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+  #library header { display: flex; align-items: center; gap: 6px; }
+  #library header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
+  #library header button { padding: 0 7px; }
+  #library select, #library input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+    border-radius: 4px; padding: 3px 6px; width: 100%; }
+  #library select option { color: #1d1d1b; }
+  #libItems { overflow: auto; min-height: 0; }
+  #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
+  #libItems .item { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+  #libItems .item:hover { background: var(--line); }
+  #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; flex: none; background: var(--line); }
+  #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #libItems .note { color: var(--muted); padding: 4px 0; }
   .touch-only { display: none; }
   @media (pointer: coarse) {
+    #library select, #library input { font-size: 16px; } /* iOS zooms into smaller inputs */
+    #libItems .item { min-height: 44px; }
     body.has-exhibits #touchbar { display: flex; }
     .touch-only { display: revert; }
     .desk-only { display: none; }
@@ -75,6 +95,7 @@
     #bar button { min-height: 34px; }
     #detail { right: 10px; bottom: 76px; width: min(300px, calc(100vw - 20px)); }
     #version { right: 10px; }
+    #library { right: 10px; width: calc(100vw - 20px); max-height: 55vh; }
   }
 </style>
 <script>
@@ -173,15 +194,16 @@
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.8 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.9 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.8 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.9 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
+  <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
   <button id="bTheme" title="B">Light</button>
@@ -198,6 +220,7 @@
   <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove selected</td></tr>
   <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower selected (Shift ×10)</td></tr>
   <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>put selected back on the floor</td></tr>
+  <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move selected library asset</td></tr>
 </table></div>
 
 <div id="status" class="ui"></div>
@@ -210,12 +233,19 @@
   <label>Shape</label><div class="seg"><button id="shSquare" class="on">square</button><button id="shCircle">circle</button></div>
   <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
   <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
+  <label for="lights" class="lib-only hidden" title="Lights of library assets that ask for one in their manifest">Lights</label><input id="lights" class="lib-only hidden" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span class="lib-only hidden"></span>
   <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
 </div>
 <div id="touchbar" class="ui">
   <button id="tPrev" aria-label="previous exhibit">‹</button>
   <button id="tOverview">overview</button>
   <button id="tNext" aria-label="next exhibit">›</button>
+</div>
+<div id="library" class="ui hidden">
+  <header><h1>Library</h1><button id="libClose" aria-label="close library">×</button></header>
+  <select id="libCollection" aria-label="collection"></select>
+  <input id="libSearch" type="search" placeholder="Search" aria-label="search the library" autocomplete="off">
+  <div id="libItems"></div>
 </div>
 <input id="file" type="file" multiple hidden>
 
@@ -232,6 +262,8 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { PCDLoader } from 'three/addons/loaders/PCDLoader.js';
 import { Rhino3dmLoader } from 'three/addons/loaders/3DMLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptSimplifier } from 'https://cdn.jsdelivr.net/npm/meshoptimizer@0.25.0/meshopt_simplifier.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
@@ -282,7 +314,7 @@ const status = (msg) => { const s = $('#status'); s.style.display = msg ? 'block
 let slotGap = 2.5;          // metres of empty floor between exhibits (slider)
 const UNIFORM_SIZE = 3;     // largest dimension of each exhibit in uniform mode
 let uniform = true;
-const exhibits = [];        // { name, root, pivot, content, localBox, userScale, label, splat }
+const exhibits = [];        // { name, root, pivot, content, localBox, userScale, label, splat, libraryAsset }
 let selected = null;
 window.exhibition = { exhibits, camera, scene }; // for inspection from the console
 
@@ -707,7 +739,7 @@ function drawLabel(ex) {
   g.fillStyle = THEMES[theme].label;
   g.font = '500 64px -apple-system, Helvetica Neue, Arial, sans-serif';
   g.textBaseline = 'middle';
-  const idx = String(exhibits.indexOf(ex) + 1).padStart(2, '0');
+  const idx = String(exhibits.filter(e => !e.libraryAsset).indexOf(ex) + 1).padStart(2, '0');
   g.fillText(`${idx}  ${ex.name}`, 8, 70, 1008);
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   if (ex.label) { ex.label.material.map.dispose(); ex.label.material.map = tex; ex.label.material.needsUpdate = true; return; }
@@ -715,12 +747,21 @@ function drawLabel(ex) {
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
   ex.label.rotation.x = -Math.PI / 2;
   ex.label.position.y = .005;
-  ex.label.visible = showTitles;
+  ex.label.visible = showTitles && !ex.libraryAsset; // library assets are furnishing, not exhibits
   ex.root.add(ex.label);
 }
 
 // fit pivot (rotation + scale) into its slot: centred in x/z, standing on the floor
 function fitExhibit(ex) {
+  // library assets keep real scale and their own origin as insertion point; the root is placed freely
+  if (ex.libraryAsset) {
+    const b = ex.localBox.clone().applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(ex.pivot.quaternion));
+    const lift = ex.lift * (b.max.y - b.min.y);
+    ex.pivot.scale.setScalar(1);
+    ex.pivot.position.set(0, lift, 0);
+    ex.box = b.translate(new THREE.Vector3(0, lift, 0));
+    return;
+  }
   // box at scale 1 in the current orientation: core box for scans, plain bounds for meshes
   let b = null;
   if (ex.samples) {
@@ -747,9 +788,10 @@ function fitExhibit(ex) {
 function layout() {
   if (!exhibits.length) return;
   exhibits.forEach(fitExhibit);
-  const slot = Math.max(...exhibits.map(e => { const s = e.box.getSize(new THREE.Vector3()); return Math.max(s.x, s.z); })) + slotGap;
-  const cols = Math.ceil(Math.sqrt(exhibits.length));
-  exhibits.forEach((e, i) => {
+  const slotted = exhibits.filter(e => !e.libraryAsset); // library assets stay where they were put
+  const slot = Math.max(...slotted.map(e => { const s = e.box.getSize(new THREE.Vector3()); return Math.max(s.x, s.z); })) + slotGap;
+  const cols = Math.ceil(Math.sqrt(slotted.length));
+  slotted.forEach((e, i) => {
     const col = i % cols, row = Math.floor(i / cols);
     // odd rows shift half a slot, so nothing hides straight behind the exhibit you look at
     e.root.position.set((col - (cols - 1) / 2 + (row % 2) * .5) * slot, 0, -row * slot);
@@ -775,10 +817,11 @@ function renderList() {
     const li = document.createElement('li');
     li.textContent = e.name;
     const k = document.createElement('span'); k.className = 'k';
-    k.textContent = e.demo ? 'demo · drop your own files to replace' : [e.splat && 'splat',
+    k.textContent = e.demo ? 'demo · drop your own files to replace' : e.libraryAsset ? ['library', e.libEntry.group].filter(Boolean).join(' · ') : [e.splat && 'splat',
       e.stride > 1 && `${fmtN(e.total)} → ${fmtN(Math.ceil(e.total / e.stride))}`].filter(Boolean).join(' · ');
     li.append(k);
     if (e === selected) li.className = 'sel';
+    if (e === selected && e.libraryAsset) li.append(metaList(e.libEntry.meta));
     li.onclick = () => { select(e); flyTo(e); };
     ol.insertBefore(li, ol.querySelector('li.err'));
   });
@@ -838,6 +881,11 @@ dom.addEventListener('pointerdown', e => {
   if (pointers.size === 1) {
     drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, moved: false, touch: e.pointerType === 'touch' };
     if (e.button === 0) drag.pivot = orbitPivot(e);
+    // dragging the selected library asset slides it over the floor instead of orbiting
+    if (e.button === 0 && selected?.libraryAsset && hits(e, selected)) { // even when it stands inside a larger exhibit's box
+      const hit = floorHit(e, selected.root.position.y);
+      if (hit) drag.move = hit.sub(selected.root.position);
+    }
   } else if (pointers.size === 2) {
     drag = null;
     const g = twoFinger();
@@ -884,6 +932,14 @@ dom.addEventListener('pointermove', e => {
   drag.x = e.clientX; drag.y = e.clientY;
   if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > (drag.touch ? 8 : 4)) drag.moved = true;
   if (!drag.moved) return;
+  if (drag.move && selected?.libraryAsset) {
+    const hit = floorHit(e, selected.root.position.y);
+    if (hit) {
+      selected.root.position.set(hit.x - drag.move.x, selected.root.position.y, hit.z - drag.move.z);
+      selected.root.updateMatrixWorld(true); selected.far = undefined; updateSelection();
+    }
+    return;
+  }
   if (drag.button === 0) {
     const k = drag.touch ? .008 : .006;
     orbit(drag.pivot, -dx * k, -dy * k);
@@ -927,10 +983,21 @@ function pick(e) {
   }
   return best;
 }
+function hits(e, ex) {
+  ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1), camera);
+  return ray.ray.intersectsBox(worldBox(ex));
+}
+// where the pointer ray meets the horizontal plane at height y (null when looking away from it)
+function floorHit(e, y) {
+  ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1), camera);
+  const p = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), new THREE.Vector3());
+  return p && p.distanceTo(camera.position) < 500 ? p : null;
+}
 
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey) return;
+  if (e.target.closest?.('#library')) { if (e.key === 'Escape') toggleLibrary(false); return; } // typing a search
   const k = e.key.toLowerCase();
   keys.add(k); if (e.shiftKey) keys.add('shift');
   if ('wasdqe'.includes(k) && k.length === 1) stopTween();
@@ -944,6 +1011,7 @@ addEventListener('keydown', e => {
     case 'h': $('#help').classList.toggle('hidden'); break;
     case 'b': toggleTheme(); break;
     case 'u': toggleScale(); break;
+    case 'l': if (!$('#bLib').classList.contains('hidden')) toggleLibrary(); break;
   }
   if (!selected) return;
   const rotate = (axis, a) => { selected.pivot.rotateOnWorldAxis(axis, a); layout(); };
@@ -951,8 +1019,8 @@ addEventListener('keydown', e => {
     case 'r': rotate(new THREE.Vector3(0, 1, 0), Math.PI / 2); break;
     case 't': rotate(new THREE.Vector3(1, 0, 0), -Math.PI / 2); break;
     case 'f': rotate(new THREE.Vector3(0, 0, 1), Math.PI); break;
-    case '[': selected.userScale /= 1.25; layout(); break;
-    case ']': selected.userScale *= 1.25; layout(); break;
+    case '[': if (!selected.libraryAsset) { selected.userScale /= 1.25; layout(); } break; // library assets keep real scale
+    case ']': if (!selected.libraryAsset) { selected.userScale *= 1.25; layout(); } break;
     case 'delete': case 'backspace': removeExhibit(selected); break;
     case 'escape': select(null); break;
     case 'arrowup': case 'arrowdown':
@@ -966,10 +1034,12 @@ addEventListener('blur', () => keys.clear());
 function disposeTree(obj) { obj.traverse(o => { o.geometry?.dispose?.(); o.dispose?.(); }); }
 function removeExhibit(ex) {
   scene.remove(ex.root);
-  disposeTree(ex.root);
+  if (ex.libraryAsset) { ex.label.geometry.dispose(); ex.label.material.map.dispose(); } // geometry is shared with the library cache
+  else disposeTree(ex.root);
   exhibits.splice(exhibits.indexOf(ex), 1);
   exhibits.forEach(drawLabel);
   select(null); layout();
+  if (ex.libraryAsset) assignLights();
   if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); document.body.classList.remove('has-exhibits'); }
 }
 
@@ -986,6 +1056,174 @@ $('#bScale').onclick = toggleScale;
 $('#bHelp').onclick = () => $('#help').classList.toggle('hidden');
 $('#bAdd').onclick = $('#pick').onclick = () => $('#file').click();
 $('#file').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
+
+// ---------- asset library ----------
+// Prepared GLBs listed in library/index.json -> <collection>/manifest.json. Placed at real scale
+// (metres, y up, origin = insertion point) in front of the camera, and moved by dragging them.
+const LIB_INDEX = 'library/index.json';
+const MAX_ASSET_LIGHTS = 8;   // more lights make every material shader heavier
+const libCache = new Map();   // glb url -> Promise of the loaded scene, cloned for every placement
+let libCollections = [], libEntries = [], libLights = true;
+
+async function initLibrary() {
+  try {
+    const res = await fetch(LIB_INDEX, { cache: 'no-cache' });
+    if (!res.ok) return;
+    const list = await res.json();
+    if (!Array.isArray(list) || !list.length) return;
+    libCollections = list.filter(c => c && c.manifest).map(c => ({ ...c, url: new URL(c.manifest, res.url).href }));
+  } catch (err) { return; } // no library next to the page: no button
+  if (!libCollections.length) return;
+  const sel = $('#libCollection');
+  sel.replaceChildren(...libCollections.map((c, i) => new Option(c.name || c.id || c.manifest, i)));
+  sel.classList.toggle('hidden', libCollections.length < 2);
+  sel.onchange = () => openCollection(+sel.value);
+  $('#bLib').classList.remove('hidden');
+  document.querySelectorAll('.lib-only').forEach(el => el.classList.remove('hidden'));
+}
+
+async function openCollection(i) {
+  const c = libCollections[i];
+  libEntries = []; renderLibrary();
+  if (!c) return;
+  if (!c.entries) {
+    $('#libItems').innerHTML = '<div class="note">Loading…</div>';
+    try {
+      const res = await fetch(c.url, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(res.status);
+      const list = await res.json();
+      c.entries = (Array.isArray(list) ? list : []).filter(a => a && a.file).map(a => ({
+        ...a, name: a.name || a.file, collection: c.name || c.id,
+        url: new URL(a.file, res.url).href, thumbUrl: a.thumb ? new URL(a.thumb, res.url).href : null,
+        text: [a.name, a.file, a.group, flatMeta(a.meta)].join(' ').toLowerCase(),
+      }));
+    } catch (err) { console.warn('library', c.url, err); c.entries = null; $('#libItems').innerHTML = '<div class="note">Could not load this collection.</div>'; return; }
+  }
+  if (+$('#libCollection').value !== i) return; // switched again while loading
+  libEntries = c.entries; renderLibrary();
+}
+const flatMeta = m => m && typeof m === 'object' ? Object.entries(m).map(([k, v]) => k + ' ' + (typeof v === 'object' ? flatMeta(v) : v)).join(' ') : '';
+
+function renderLibrary() {
+  const box = $('#libItems'); box.replaceChildren();
+  const terms = $('#libSearch').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = libEntries.filter(a => terms.every(t => a.text.includes(t)));
+  if (!hits.length) { if (libEntries.length) box.innerHTML = '<div class="note">Nothing found.</div>'; return; }
+  const groups = new Map();
+  for (const a of hits) { const g = a.group || ''; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(a); }
+  for (const [g, items] of groups) {
+    if (g) { const h = document.createElement('h2'); h.textContent = g; box.append(h); }
+    for (const a of items) {
+      const row = document.createElement('div'); row.className = 'item'; row.title = a.file;
+      if (a.thumbUrl) { const img = new Image(); img.loading = 'lazy'; img.alt = ''; img.src = a.thumbUrl; img.onerror = () => img.remove(); row.append(img); }
+      const name = document.createElement('span'); name.textContent = a.name; row.append(name);
+      row.onclick = () => placeAsset(a);
+      box.append(row);
+    }
+  }
+}
+
+function toggleLibrary(open = $('#library').classList.contains('hidden')) {
+  $('#library').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px'; // the bar wraps on phones
+  $('#library').classList.toggle('hidden', !open);
+  $('#bLib').classList.toggle('on', open);
+  if (open && !libEntries.length) openCollection(+$('#libCollection').value || 0);
+  if (open && matchMedia('(pointer: fine)').matches) $('#libSearch').focus();
+  if (!open) document.activeElement?.blur();
+}
+
+// key/value list of free-form manifest meta, objects shown as compact JSON
+function metaList(meta) {
+  const dl = document.createElement('div'); dl.className = 'meta';
+  if (!meta || typeof meta !== 'object') return dl;
+  for (const [k, v] of Object.entries(meta)) {
+    const a = document.createElement('span'), b = document.createElement('span');
+    a.textContent = k; b.textContent = v && typeof v === 'object' ? JSON.stringify(v) : String(v);
+    dl.append(a, b);
+  }
+  return dl;
+}
+
+function loadAsset(url) {
+  if (!libCache.has(url)) {
+    const p = gltf.loadAsync(url).then(g => {
+      g.scene.traverse(o => { if (o.isLight) o.visible = false; }); // lights come from the manifest only
+      return g.scene;
+    });
+    p.catch(() => libCache.delete(url)); // a failed download can be tried again
+    libCache.set(url, p);
+  }
+  return libCache.get(url);
+}
+
+async function placeAsset(a) {
+  status(`Loading ${a.name}…`);
+  let src;
+  try { src = await loadAsset(a.url); }
+  catch (err) { console.error(a.url, err); status(`Could not load ${a.name}.`); setTimeout(() => status(''), 4000); return; }
+  status('');
+  const obj = SkeletonUtils.clone(src);
+  const content = new THREE.Group(); content.add(obj);
+  content.updateMatrixWorld(true);
+  const localBox = new THREE.Box3().setFromObject(content);
+  if (localBox.isEmpty()) localBox.set(new THREE.Vector3(-.1, 0, -.1), new THREE.Vector3(.1, .2, .1));
+  addExhibit({ name: a.name, content, localBox, samples: null, libraryAsset: true, libEntry: a });
+  const ex = exhibits.at(-1);
+  ex.root.userData.libraryAsset = obj.userData.libraryAsset = true;
+  ex.lights = makeLights(a.meta?.light, localBox);
+  ex.lights.forEach(l => ex.pivot.add(l));
+  // on the floor where the view meets it, but not further than a few metres (then dropped to the floor)
+  const size = localBox.getSize(new THREE.Vector3()), dir = lookDir();
+  const near = Math.max(2, Math.max(size.x, size.y, size.z) * 1.5);
+  const t = dir.y < -.01 ? THREE.MathUtils.clamp(-camera.position.y / dir.y, near, near * 3) : near * 2;
+  const at = camera.position.clone().addScaledVector(dir, t);
+  ex.root.position.set(at.x, 0, at.z);
+  ex.root.updateMatrixWorld(true);
+  $('#empty').classList.add('hidden');
+  $('#list').classList.remove('hidden');
+  document.body.classList.add('has-exhibits');
+  layout(); select(ex); assignLights();
+  if (!matchMedia('(pointer: fine)').matches || matchMedia('(max-width: 640px)').matches) toggleLibrary(false); // give the screen back
+}
+
+// meta.light = { type: "point" | "area", color, intensity, distance?, width?, height?, position?: [x, y, z] (asset space) }
+let rectReady = false;
+function makeLights(spec, box) {
+  if (!spec || typeof spec !== 'object') return [];
+  const color = new THREE.Color(spec.color || '#ffffff');
+  const intensity = Number.isFinite(+spec.intensity) ? +spec.intensity : 5;
+  const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+  let l;
+  if (spec.type === 'area') {
+    if (!rectReady) { RectAreaLightUniformsLib.init(); rectReady = true; }
+    l = new THREE.RectAreaLight(color, intensity, +spec.width || Math.max(size.x, .1), +spec.height || Math.max(size.z, .1));
+    l.position.set(centre.x, box.min.y, centre.z);
+    l.rotation.x = -Math.PI / 2; // shines down from the underside of the asset
+  } else {
+    l = new THREE.PointLight(color, intensity, +spec.distance || 0, 2);
+    l.position.copy(centre);
+  }
+  if (Array.isArray(spec.position) && spec.position.length === 3) l.position.fromArray(spec.position.map(Number));
+  l.visible = false; // switched on by assignLights
+  return [l];
+}
+
+// the asset lights nearest to the camera, at most MAX_ASSET_LIGHTS, and none when Lights is off
+const lightPos = new THREE.Vector3();
+function assignLights() {
+  const all = exhibits.flatMap(e => e.lights || []);
+  if (!all.length) return;
+  const d = l => l.getWorldPosition(lightPos).distanceToSquared(camera.position);
+  const lit = exhibits.filter(e => e.lights && e.pivot.visible).flatMap(e => e.lights); // hidden beyond the radius: dark too
+  const on = new Set(libLights ? lit.map(l => [l, d(l)]).sort((a, b) => a[1] - b[1]).slice(0, MAX_ASSET_LIGHTS).map(x => x[0]) : []);
+  all.forEach(l => l.visible = on.has(l));
+}
+
+$('#bLib').onclick = () => toggleLibrary();
+$('#libClose').onclick = () => toggleLibrary(false);
+$('#libSearch').oninput = renderLibrary;
+$('#lights').onchange = () => { libLights = $('#lights').checked; assignLights(); };
+initLibrary();
 
 window.exhibitionReady(files => handleFiles(files));
 loadDemo();
@@ -1024,7 +1262,7 @@ function readBudget() {
 $('#budget').oninput = readBudget;
 $('#budget').onchange = reimport;
 let showTitles = true;
-$('#titles').onchange = () => { showTitles = $('#titles').checked; exhibits.forEach(e => e.label.visible = showTitles); };
+$('#titles').onchange = () => { showTitles = $('#titles').checked; exhibits.forEach(e => e.label.visible = showTitles && !e.libraryAsset); };
 $('#gap').oninput = () => { slotGap = +$('#gap').value; $('#gapOut').textContent = slotGap + ' m'; layout(); };
 const setMode = m => { detailMode = m; $('#mSimplify').classList.toggle('on', m === 'simplify'); $('#mHide').classList.toggle('on', m === 'hide'); exhibits.forEach(e => e.far = undefined); };
 $('#mSimplify').onclick = () => setMode('simplify');
@@ -1040,6 +1278,7 @@ function updateDetail() {
     ex.pivot.visible = !(far && detailMode === 'hide');
     setLow(ex, far && detailMode === 'simplify');
   }
+  assignLights();
 }
 // ---------- point style ----------
 // size multiplier and square/round dots for point clouds (splats and meshes are not affected)
@@ -1075,7 +1314,7 @@ function setLow(ex, low) {
       const n = o.geometry.attributes.position.count;
       o.geometry.setDrawRange(0, low ? Math.ceil(n * LOW_POINTS) : Infinity);
       o.userData.low = low; stylePoints(o);
-    } else if (o.isMesh && o !== ex.splat) {
+    } else if (o.isMesh && o !== ex.splat && !ex.libraryAsset) {
       o.userData.full ??= o.geometry;
       if (low && o.userData.low === undefined) o.userData.low = decimate(o);
       o.geometry = low && o.userData.low ? o.userData.low : o.userData.full;
