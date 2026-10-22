@@ -21,7 +21,14 @@ GLBs are in metres, Y up, with the origin as insertion point. `meta` is free-for
 
 **Publish a link:** Publish puts the exhibition online for 1–30 days (or until you delete it) and gives you a link that opens it directly, on phones too. Shows are stored in the public repo [ibagaturiya/exhibitions](https://github.com/ibagaturiya/exhibitions), served by GitHub Pages. A daily job there deletes expired shows and clears the history so the space is freed. Large scans are uploaded in parts, so GitHub's 100 MB file limit doesn't matter, but all live shows together must stay under about 1 GB.
 
-One-time setup on each device you publish from: create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) with access to the `exhibitions` repo only and the permission *Contents: Read and write*, then paste it into the Publish panel. It is kept in that browser only ("Forget the token" removes it). People who open a link need nothing.
+Opening a link needs nothing: no account, no token. Only publishing needs a GitHub token with write access to the `exhibitions` repo (the owner, or collaborators added to that repo). To make one:
+
+1. Open [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) (Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token).
+2. Give it a name, e.g. `exhibition publish`, and an expiration (e.g. 1 year; make a new one when it runs out).
+3. **Repository access:** *Only select repositories* → `ibagaturiya/exhibitions`.
+4. **Permissions:** click **+ Add permissions**, choose **Contents**, and set it to **Read and write**. (*Metadata: Read-only* is added by itself.)
+5. **Generate token** and copy it (`github_pat_…`). GitHub shows it only once.
+6. In the viewer click **Publish**, paste it into *GitHub token* and publish. The token is kept in that browser only, so this is once per device; *Forget the token* removes it. Never share it or put it in a link.
 
 Any saved exhibition can also be opened by URL: `exhibition_viewer.html?open=<url of the zip, or of the unzipped folder>`, from any host that allows cross-site downloads.
 
