@@ -19,7 +19,13 @@ GLBs are in metres, Y up, with the origin as insertion point. `meta` is free-for
 
 **Save:** the Save button downloads the exhibition as a zip, with every model, its position and the settings. To share it, send the zip: the receiver unzips it and double-clicks `exhibition.html` (internet needed for the 3D engine), or drops the zip onto the viewer page (phones and tablets). Large scans make large zips.
 
-Everything runs locally in your browser; files are not uploaded anywhere. Press **H** in the viewer for controls.
+**Publish a link:** Publish puts the exhibition online for 1–30 days (or until you delete it) and gives you a link that opens it directly, on phones too. Shows are stored in the public repo [ibagaturiya/exhibitions](https://github.com/ibagaturiya/exhibitions), served by GitHub Pages. A daily job there deletes expired shows and clears the history so the space is freed. Large scans are uploaded in parts, so GitHub's 100 MB file limit doesn't matter, but all live shows together must stay under about 1 GB.
+
+One-time setup on each device you publish from: create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) with access to the `exhibitions` repo only and the permission *Contents: Read and write*, then paste it into the Publish panel. It is kept in that browser only ("Forget the token" removes it). People who open a link need nothing.
+
+Any saved exhibition can also be opened by URL: `exhibition_viewer.html?open=<url of the zip, or of the unzipped folder>`, from any host that allows cross-site downloads.
+
+Everything runs locally in your browser; files are only uploaded when you click Publish. Press **H** in the viewer for controls.
 
 ## License
 

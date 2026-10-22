@@ -63,14 +63,18 @@
   #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 2px 0 4px; white-space: normal;
     color: var(--muted); font-size: 11px; }
   #list li .meta span:nth-child(odd) { color: var(--fg); }
-  #library { top: 66px; right: 16px; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 82px);
+  #library, #publish { top: 66px; right: 16px; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 82px);
     display: flex; flex-direction: column; gap: 6px; z-index: 2; }
-  #library header { display: flex; align-items: center; gap: 6px; }
-  #library header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
-  #library header button { padding: 0 7px; }
-  #library select, #library input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+  #library header, #publish header { display: flex; align-items: center; gap: 6px; }
+  #library header h1, #publish header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
+  #library header button, #publish header button { padding: 0 7px; }
+  #library select, #library input, #publish select, #publish input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
     border-radius: 4px; padding: 3px 6px; width: 100%; }
-  #library select option { color: #1d1d1b; }
+  #library select option, #publish select option { color: #1d1d1b; }
+  #publish label { color: var(--muted); display: grid; gap: 3px; }
+  #publish .row { display: flex; gap: 6px; }
+  #publish .note { color: var(--muted); font-size: 11px; }
+  #publish a { color: var(--muted); }
   #libItems { overflow: auto; min-height: 0; }
   #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
   #libItems .item { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
@@ -78,10 +82,10 @@
   #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; flex: none; background: var(--line); }
   #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #libItems .note { color: var(--muted); padding: 4px 0; }
-  body:not(.has-exhibits) #bSave { display: none; }
+  body:not(.has-exhibits) #bSave, body:not(.has-exhibits) #bPublish { display: none; }
   .touch-only { display: none; }
   @media (pointer: coarse) {
-    #library select, #library input { font-size: 16px; } /* iOS zooms into smaller inputs */
+    #library select, #library input, #publish select, #publish input { font-size: 16px; } /* iOS zooms into smaller inputs */
     #libItems .item { min-height: 44px; }
     body.has-exhibits #touchbar { display: flex; }
     .touch-only { display: revert; }
@@ -96,7 +100,7 @@
     #bar button { min-height: 34px; }
     #detail { right: 10px; bottom: 76px; width: min(300px, calc(100vw - 20px)); }
     #version { right: 10px; }
-    #library { right: 10px; width: calc(100vw - 20px); max-height: 55vh; }
+    #library, #publish { right: 10px; width: calc(100vw - 20px); max-height: 55vh; }
   }
 </style>
 <script>
@@ -195,18 +199,19 @@
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.10 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.11 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.10 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.11 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
   <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
   <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
+  <button id="bPublish" title="Put the exhibition online for a few days and get a link to share">Publish</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
@@ -248,6 +253,20 @@
   <select id="libCollection" aria-label="collection"></select>
   <input id="libSearch" type="search" placeholder="Search" aria-label="search the library" autocomplete="off">
   <div id="libItems"></div>
+</div>
+<div id="publish" class="ui hidden">
+  <header><h1>Publish a link</h1><button id="pubClose" aria-label="close">×</button></header>
+  <label>Keep online for
+    <select id="pubDays"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option>
+      <option value="14">14 days</option><option value="30">30 days</option><option value="0">until I delete it</option></select></label>
+  <label id="pubTokenRow">GitHub token, once on this device
+    <input id="pubToken" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+  <button id="pubGo">Publish</button>
+  <div id="pubOut" class="hidden">
+    <div class="row"><input id="pubLink" readonly aria-label="link"><button id="pubCopy">Copy</button></div>
+    <div id="pubNote" class="note"></div>
+  </div>
+  <div class="note">Published exhibitions are public. <a id="pubForget" href="#">Forget the token</a></div>
 </div>
 <input id="file" type="file" multiple hidden>
 
@@ -1009,7 +1028,7 @@ function floorHit(e, y) {
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey) return;
-  if (e.target.closest?.('#library')) { if (e.key === 'Escape') toggleLibrary(false); return; } // typing a search
+  if (e.target.closest?.('#library, #publish')) { if (e.key === 'Escape') { toggleLibrary(false); togglePublish(false); } return; } // typing
   const k = e.key.toLowerCase();
   keys.add(k); if (e.shiftKey) keys.add('shift');
   if ('wasdqe'.includes(k) && k.length === 1) stopTween();
@@ -1136,6 +1155,7 @@ function renderLibrary() {
 }
 
 function toggleLibrary(open = $('#library').classList.contains('hidden')) {
+  if (open) togglePublish(false);
   $('#library').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px'; // the bar wraps on phones
   $('#library').classList.toggle('hidden', !open);
   $('#bLib').classList.toggle('on', open);
@@ -1270,38 +1290,44 @@ async function viewerSource() {
   throw new Error('the viewer itself could not be read (needs internet)');
 }
 
-async function saveExhibition() {
-  if (!exhibits.length) return;
-  const name = 'exhibition_' + new Date().toISOString().slice(0, 10);
-  const out = {}, files = [], ids = new Map();
+// the scene as JSON, and the files it refers to (scene.files[i] <-> files[i], split into PART-sized parts)
+async function sceneState(name) {
+  const files = [], ids = new Map();
   const add = f => {
     if (!ids.has(f)) { ids.set(f, files.length); files.push({ name: f.name, size: f.size, file: f }); }
     return ids.get(f);
   };
-  try {
-    const scene = { version: 1, name, saved: new Date().toISOString(), exhibits: [], files: [],
-      settings: { theme, uniform, slotGap, showTitles, libLights, pointScale: +$('#ptSize').value, pointShape, detailMode,
-        radius: +$('#radius').value, budget: +$('#budget').value },
-      // mid-flight the view is saved where the flight ends
-      camera: tween ? { position: tween.pos.toArray(), look: new THREE.Vector3().subVectors(tween.target, tween.pos).normalize().toArray() }
-        : { position: camera.position.toArray(), look: lookDir().toArray() } };
-    for (const ex of exhibits) {
-      if (ex.libraryAsset && !ex.file) { // library GLBs go along, a folder on disk cannot reach the library
-        status(`Fetching ${ex.name}…`);
-        const r = await fetch(ex.libEntry.url); if (!r.ok) throw new Error(`${ex.name}: ${r.status}`);
-        ex.file = new File([await r.blob()], ex.libEntry.file.split('/').pop());
-      }
-      const sidecars = ex.byName ? [...new Set(ex.byName.values())].filter(f => f !== ex.file && !MAIN_EXT.includes(ext(f.name))) : [];
-      scene.exhibits.push({ name: ex.name, file: add(ex.file), sidecars: sidecars.map(add),
-        quaternion: ex.pivot.quaternion.toArray(), userScale: ex.userScale, lift: ex.lift,
-        ...(ex.libraryAsset && { position: ex.root.position.toArray(),
-          library: { name: ex.libEntry.name, file: ex.libEntry.file, group: ex.libEntry.group, meta: ex.libEntry.meta } }) });
+  const scene = { version: 1, name, saved: new Date().toISOString(), exhibits: [], files: [],
+    settings: { theme, uniform, slotGap, showTitles, libLights, pointScale: +$('#ptSize').value, pointShape, detailMode,
+      radius: +$('#radius').value, budget: +$('#budget').value },
+    // mid-flight the view is saved where the flight ends
+    camera: tween ? { position: tween.pos.toArray(), look: new THREE.Vector3().subVectors(tween.target, tween.pos).normalize().toArray() }
+      : { position: camera.position.toArray(), look: lookDir().toArray() } };
+  for (const ex of exhibits) {
+    if (ex.libraryAsset && !ex.file) { // library GLBs go along, a folder on disk cannot reach the library
+      status(`Fetching ${ex.name}…`);
+      const r = await fetch(ex.libEntry.url); if (!r.ok) throw new Error(`${ex.name}: ${r.status}`);
+      ex.file = new File([await r.blob()], ex.libEntry.file.split('/').pop());
     }
+    const sidecars = ex.byName ? [...new Set(ex.byName.values())].filter(f => f !== ex.file && !MAIN_EXT.includes(ext(f.name))) : [];
+    scene.exhibits.push({ name: ex.name, file: add(ex.file), sidecars: sidecars.map(add),
+      quaternion: ex.pivot.quaternion.toArray(), userScale: ex.userScale, lift: ex.lift,
+      ...(ex.libraryAsset && { position: ex.root.position.toArray(),
+        library: { name: ex.libEntry.name, file: ex.libEntry.file, group: ex.libEntry.group, meta: ex.libEntry.meta } }) });
+  }
+  scene.files = files.map(f => ({ name: f.name, size: f.size, parts: Math.max(1, Math.ceil(f.size / PART)) }));
+  return { scene, files };
+}
+
+async function saveExhibition() {
+  if (!exhibits.length) return;
+  const name = 'exhibition_' + new Date().toISOString().slice(0, 10);
+  const out = {};
+  try {
+    const { scene, files } = await sceneState(name);
     let done = 0; const total = files.reduce((s, f) => s + f.size, 0) || 1;
     for (const [i, f] of files.entries()) {
-      const parts = Math.max(1, Math.ceil(f.size / PART));
-      scene.files.push({ name: f.name, size: f.size, parts });
-      for (let k = 0; k < parts; k++) {
+      for (let k = 0; k < scene.files[i].parts; k++) {
         status(`Packing ${f.name} (${Math.round(done / total * 100)} %)`);
         const blob = f.file.slice(k * PART, (k + 1) * PART);
         out[`${name}/data/${i}_${k}.js`] = strToU8(`exhibitionPart("${await b64Of(blob)}", ${JSON.stringify({ file: i, part: k })});\n`);
@@ -1323,7 +1349,7 @@ async function saveExhibition() {
   } catch (err) { console.error(err); status('Could not save: ' + (err.message || err)); setTimeout(() => status(''), 6000); }
 }
 
-// sources of a saved exhibition: scene() -> scene object, part(name) -> { b64, head }
+// sources of a saved exhibition: scene() -> scene object, part('<file>_<part>') -> { b64 } or { bytes }
 function parsePart(text) {
   const a = text.indexOf('"'), b = text.indexOf('"', a + 1);
   return { b64: text.slice(a + 1, b), head: JSON.parse(text.slice(b + 2, text.lastIndexOf(')'))) };
@@ -1337,11 +1363,11 @@ function zipSource(file) {
     if (!key) throw new Error('not a saved exhibition (no data/' + name + ')');
     return strFromU8(entries[key]);
   };
-  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n)) };
+  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n + '.js')) };
 }
 function folderSource(files) {
   const get = name => { const f = files.find(f => f.name === name); if (!f) throw new Error('missing data/' + name); return f.text(); };
-  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n)) };
+  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n + '.js')) };
 }
 function scriptSource(dir) {
   // opened from disk: the data files arrive as scripts that call back
@@ -1352,7 +1378,7 @@ function scriptSource(dir) {
     document.head.append(s);
   });
   return { scene: async () => (await load('scene.js', 'exhibitionScene'))[0],
-    part: async n => { const [b64, head] = await load(n, 'exhibitionPart'); return { b64, head }; } };
+    part: async n => { const [b64, head] = await load(n + '.js', 'exhibitionPart'); return { b64, head }; } };
 }
 
 async function openExhibition(src) {
@@ -1383,7 +1409,8 @@ async function openExhibition(src) {
       const meta = scene.files[i], chunks = [];
       for (let k = 0; k < meta.parts; k++) {
         status(`Reading ${meta.name}${meta.parts > 1 ? ` (${k + 1}/${meta.parts})` : ''}…`);
-        chunks.push(await bytesOf((await src.part(`${i}_${k}.js`)).b64));
+        const part = await src.part(`${i}_${k}`);
+        chunks.push(part.bytes ?? await bytesOf(part.b64));
       }
       const f = new File(chunks, meta.name); cache.set(i, f); return f;
     };
@@ -1421,15 +1448,147 @@ async function openExhibition(src) {
       speed = Math.max(1, ...exhibits.map(e => { const s = e.box.getSize(new THREE.Vector3()); return Math.max(s.x, s.y, s.z) / 2; }));
     } else if (exhibits.length) overview();
   } catch (err) {
-    console.error(err); status('Could not open: ' + (err.message || err)); setTimeout(() => status(''), 8000);
+    console.error(err); status('Could not open: ' + (err.message || err));
+    if (!openParam) setTimeout(() => status(''), 8000); // a link that failed keeps saying why
     if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); document.body.classList.remove('has-exhibits'); }
   }
 }
-$('#bSave').onclick = saveExhibition;
+// ---------- publish a link ----------
+// Publish commits the exhibition to a public GitHub repo served by GitHub Pages:
+// shows/<id>/scene.json, show.json ({ name, created, expires }) and data/<file>_<part>.bin.
+// A daily workflow in that repo deletes expired shows and clears its history to free the space.
+// The token (fine-grained, contents read/write on that repo only) stays in this browser.
+const PUBLISH = { repo: 'ibagaturiya/exhibitions', branch: 'main', pages: 'https://ibagaturiya.github.io/exhibitions/', maxBytes: 900e6 };
+const TOKEN_KEY = 'exhibitionPublishToken';
+const readToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
+const keepToken = t => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {} };
 
+function togglePublish(open = $('#publish').classList.contains('hidden')) {
+  if (open) toggleLibrary(false);
+  $('#publish').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px';
+  $('#publish').classList.toggle('hidden', !open);
+  $('#bPublish').classList.toggle('on', open);
+  $('#pubTokenRow').classList.toggle('hidden', !!readToken());
+  if (!open) document.activeElement?.blur();
+}
+
+async function publishExhibition() {
+  const token = $('#pubToken').value.trim() || readToken();
+  if (!token) { $('#pubToken').focus(); return status('Paste a GitHub token first (see the README).'); }
+  const gh = async (path, method = 'GET', body) => {
+    const r = await fetch(`https://api.github.com/repos/${PUBLISH.repo}/${path}`, { method, cache: 'no-store',
+      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', ...(body && { 'Content-Type': 'application/json' }) },
+      body: body && JSON.stringify(body) });
+    if (!r.ok) {
+      const msg = (await r.json().catch(() => ({}))).message || r.statusText;
+      throw Object.assign(new Error(r.status === 401 ? 'the token was not accepted' : r.status === 404 ? `no access to ${PUBLISH.repo}` : `GitHub: ${msg}`), { status: r.status });
+    }
+    return r.json();
+  };
+  const days = +$('#pubDays').value;
+  const id = new Date().toISOString().slice(0, 10) + '-' + crypto.getRandomValues(new Uint32Array(2)).reduce((s, v) => s + v.toString(36), '').slice(0, 8);
+  const dir = `shows/${id}/`;
+  $('#pubGo').disabled = true; $('#pubOut').classList.add('hidden');
+  try {
+    status('Connecting to GitHub…');
+    const head = await gh(`git/ref/heads/${PUBLISH.branch}`);
+    const base = await gh(`git/commits/${head.object.sha}`);
+    const used = (await gh(`git/trees/${base.tree.sha}?recursive=1`)).tree.reduce((s, e) => s + (e.size || 0), 0);
+    keepToken(token); $('#pubToken').value = ''; $('#pubTokenRow').classList.add('hidden'); // it worked: remember it
+    const { scene, files } = await sceneState(id);
+    const total = files.reduce((s, f) => s + f.size, 0);
+    if (used + total > PUBLISH.maxBytes)
+      throw new Error(`not enough space: ${(used / 1e6).toFixed(0)} MB in use, this needs ${(total / 1e6).toFixed(0)} MB more, about 900 MB fit. `
+        + 'Wait for older shows to expire, or delete some in the repo.');
+    const entries = []; let done = 0;
+    for (const [i, f] of files.entries()) {
+      for (let k = 0; k < scene.files[i].parts; k++) {
+        status(`Uploading ${f.name} (${Math.round(done / (total || 1) * 100)} %)`);
+        const blob = f.file.slice(k * PART, (k + 1) * PART);
+        const { sha } = await gh('git/blobs', 'POST', { content: await b64Of(blob), encoding: 'base64' });
+        entries.push({ path: `${dir}data/${i}_${k}.bin`, mode: '100644', type: 'blob', sha });
+        done += blob.size;
+      }
+    }
+    const show = { name: scene.name, created: new Date().toISOString(), expires: days ? new Date(Date.now() + days * 864e5).toISOString() : null };
+    entries.push({ path: dir + 'scene.json', mode: '100644', type: 'blob', content: JSON.stringify(scene) },
+      { path: dir + 'show.json', mode: '100644', type: 'blob', content: JSON.stringify(show, null, 1) + '\n' });
+    status('Saving…');
+    for (let attempt = 0; ; attempt++) { // someone else may have pushed meanwhile: rebuild on the new head
+      const parent = attempt ? (await gh(`git/ref/heads/${PUBLISH.branch}`)).object.sha : head.object.sha;
+      const baseTree = attempt ? (await gh(`git/commits/${parent}`)).tree.sha : base.tree.sha;
+      const tree = await gh('git/trees', 'POST', { base_tree: baseTree, tree: entries });
+      const commit = await gh('git/commits', 'POST', { message: `Publish ${id}` + (show.expires ? `, until ${show.expires.slice(0, 10)}` : ''), tree: tree.sha, parents: [parent] });
+      try { await gh(`git/refs/heads/${PUBLISH.branch}`, 'PATCH', { sha: commit.sha }); break; }
+      catch (err) { if (err.status !== 422 || attempt >= 2) throw err; }
+    }
+    const link = `${VIEWER_URL}?open=${encodeURIComponent(PUBLISH.pages + dir)}`;
+    $('#pubLink').value = link; $('#pubOut').classList.remove('hidden');
+    const until = show.expires ? `until ${new Date(show.expires).toLocaleDateString()}` : 'until you delete it';
+    $('#pubNote').textContent = `Online ${until}. GitHub needs a minute or two before the link works…`;
+    status('');
+    // tell when GitHub Pages serves it
+    for (let t = 0; t < 60; t++) {
+      await new Promise(r => setTimeout(r, 10000));
+      if ($('#pubLink').value !== link) return;
+      const r = await fetch(PUBLISH.pages + dir + 'show.json', { cache: 'no-store' }).catch(() => null);
+      if (r?.ok) { $('#pubNote').textContent = `The link works now. Online ${until}.`; return; }
+    }
+    $('#pubNote').textContent = `Published, but GitHub Pages has not shown it yet. Check the repo's Pages settings.`;
+  } catch (err) {
+    console.error(err); status('Could not publish: ' + (err.message || err));
+    if (err.status === 401) { keepToken(''); $('#pubTokenRow').classList.remove('hidden'); }
+    setTimeout(() => status(''), 10000);
+  } finally { $('#pubGo').disabled = false; }
+}
+
+// a published show, or any folder with a saved exhibition, opened by URL
+function urlSource(base) {
+  if (!base.endsWith('/')) base += '/';
+  const get = async (n, type) => {
+    const r = await fetch(base + n, { cache: 'no-cache' });
+    if (!r.ok) throw new Error(r.status === 404 ? 'not found. It may have expired and been deleted, or is not online yet' : `${n}: ${r.status}`);
+    return r[type]();
+  };
+  let script = null; // a Save folder uploaded as it is: data/*.js instead of scene.json + .bin
+  return {
+    scene: async () => {
+      const show = await get('show.json', 'json').catch(() => null);
+      if (show?.expires && Date.parse(show.expires) < Date.now()) throw new Error(`this exhibition expired on ${new Date(show.expires).toLocaleDateString()}`);
+      status('Downloading the exhibition…');
+      try { return await get('scene.json', 'json'); }
+      catch (err) { script = scriptSource(base + 'data/'); return script.scene().catch(() => { throw err; }); }
+    },
+    part: async n => script ? script.part(n) : { bytes: await get(`data/${n}.bin`, 'arrayBuffer') },
+  };
+}
+function remoteZip(url) {
+  return zipSource({ arrayBuffer: async () => {
+    status('Downloading the exhibition…');
+    const r = await fetch(url); if (!r.ok) throw new Error(`${url.split('/').pop()}: ${r.status}`);
+    return r.arrayBuffer();
+  } });
+}
+
+$('#bSave').onclick = saveExhibition;
+$('#bPublish').onclick = () => togglePublish();
+$('#pubClose').onclick = () => togglePublish(false);
+$('#pubGo').onclick = publishExhibition;
+$('#pubCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#pubLink').value); $('#pubCopy').textContent = 'Copied'; }
+  catch { $('#pubLink').select(); }
+  setTimeout(() => $('#pubCopy').textContent = 'Copy', 2000);
+};
+$('#pubForget').onclick = e => { e.preventDefault(); keepToken(''); $('#pubTokenRow').classList.remove('hidden'); status('Token removed from this browser.'); setTimeout(() => status(''), 3000); };
+window.exhibition.sceneState = sceneState; // for testing from the console
+
+const openParam = new URLSearchParams(location.search).get('open');
 window.exhibitionReady(files => handleFiles(files));
 if (window.EXHIBITION_BUNDLE) openExhibition(scriptSource(window.EXHIBITION_BUNDLE));
-else loadDemo();
+else if (openParam) {
+  const url = new URL(openParam, location.href).href;
+  openExhibition(/\.zip$/i.test(new URL(url).pathname) ? remoteZip(url) : urlSource(url));
+} else loadDemo();
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
