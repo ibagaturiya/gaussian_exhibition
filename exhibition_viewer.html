@@ -78,6 +78,7 @@
   #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; flex: none; background: var(--line); }
   #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #libItems .note { color: var(--muted); padding: 4px 0; }
+  body:not(.has-exhibits) #bSave { display: none; }
   .touch-only { display: none; }
   @media (pointer: coarse) {
     #library select, #library input { font-size: 16px; } /* iOS zooms into smaller inputs */
@@ -185,7 +186,7 @@
 <div id="empty"><div>
   <strong>Drop your models here</strong>
   splats · point clouds · meshes, as many as you like<br>
-  .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts<br><br>
+  .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts · saved exhibitions (.zip)<br><br>
   <button id="pick">or choose files…</button>
   <div class="desk-only" style="margin-top:8px">or paste them: copy files in the Finder, then ⌘V here</div>
   <div class="touch-only" style="margin-top:8px"><button class="paste-btn">or paste a link</button></div>
@@ -194,17 +195,18 @@
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.9 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.10 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.9 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.10 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
   <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
+  <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
@@ -264,6 +266,7 @@ import { Rhino3dmLoader } from 'three/addons/loaders/3DMLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { zip, unzipSync, strToU8, strFromU8 } from 'three/addons/libs/fflate.module.js';
 import { MeshoptSimplifier } from 'https://cdn.jsdelivr.net/npm/meshoptimizer@0.25.0/meshopt_simplifier.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
@@ -341,20 +344,15 @@ async function loadDemo() {
 
 async function handleFiles(fileList, demo = false) {
   const files = [...fileList];
+  // a saved exhibition: its zip, or the unzipped folder dropped in
+  const zipped = files.find(f => ext(f.name) === 'zip');
+  if (zipped) return openExhibition(zipSource(zipped));
+  if (files.some(f => f.name === 'scene.js')) return openExhibition(folderSource(files));
   if (!demo && !userImported) {
     userImported = true;
     exhibits.filter(e => e.demo).forEach(removeExhibit);
   }
-  // sidecar files (mtl, bin, textures) resolved by name
-  const byName = new Map(files.map(f => [f.name.toLowerCase(), f]));
-  const blobUrls = new Map();
-  const urlFor = name => {
-    const key = decodeURIComponent(name).split(/[\\/]/).pop().toLowerCase();
-    const f = byName.get(key);
-    if (!f) return name;
-    if (!blobUrls.has(key)) blobUrls.set(key, URL.createObjectURL(f));
-    return blobUrls.get(key);
-  };
+  const { byName, urlFor } = resolver(files);
   const mains = files.filter(f => MAIN_EXT.includes(ext(f.name)));
   if (!mains.length) { status('No supported model files in the drop.'); setTimeout(() => status(''), 3000); return; }
   $('#empty').classList.add('hidden');
@@ -380,6 +378,20 @@ async function handleFiles(fileList, demo = false) {
   status('');
   layout();
   if (exhibits.length) overview();
+}
+
+// sidecar files (mtl, bin, textures) resolved by name
+function resolver(files) {
+  const byName = new Map(files.map(f => [f.name.toLowerCase(), f]));
+  const blobUrls = new Map();
+  const urlFor = name => {
+    const key = decodeURIComponent(name).split(/[\\/]/).pop().toLowerCase();
+    const f = byName.get(key);
+    if (!f) return name;
+    if (!blobUrls.has(key)) blobUrls.set(key, URL.createObjectURL(f));
+    return blobUrls.get(key);
+  };
+  return { byName, urlFor };
 }
 
 async function loadFile(file, byName, urlFor, progress) {
@@ -1162,6 +1174,21 @@ async function placeAsset(a) {
   try { src = await loadAsset(a.url); }
   catch (err) { console.error(a.url, err); status(`Could not load ${a.name}.`); setTimeout(() => status(''), 4000); return; }
   status('');
+  const ex = addLibraryAsset(src, a);
+  const localBox = ex.localBox;
+  // on the floor where the view meets it, but not further than a few metres (then dropped to the floor)
+  const size = localBox.getSize(new THREE.Vector3()), dir = lookDir();
+  const near = Math.max(2, Math.max(size.x, size.y, size.z) * 1.5);
+  const t = dir.y < -.01 ? THREE.MathUtils.clamp(-camera.position.y / dir.y, near, near * 3) : near * 2;
+  const at = camera.position.clone().addScaledVector(dir, t);
+  ex.root.position.set(at.x, 0, at.z);
+  ex.root.updateMatrixWorld(true);
+  showScene();
+  layout(); select(ex); assignLights();
+  if (!matchMedia('(pointer: fine)').matches || matchMedia('(max-width: 640px)').matches) toggleLibrary(false); // give the screen back
+}
+
+function addLibraryAsset(src, a) {
   const obj = SkeletonUtils.clone(src);
   const content = new THREE.Group(); content.add(obj);
   content.updateMatrixWorld(true);
@@ -1172,18 +1199,12 @@ async function placeAsset(a) {
   ex.root.userData.libraryAsset = obj.userData.libraryAsset = true;
   ex.lights = makeLights(a.meta?.light, localBox);
   ex.lights.forEach(l => ex.pivot.add(l));
-  // on the floor where the view meets it, but not further than a few metres (then dropped to the floor)
-  const size = localBox.getSize(new THREE.Vector3()), dir = lookDir();
-  const near = Math.max(2, Math.max(size.x, size.y, size.z) * 1.5);
-  const t = dir.y < -.01 ? THREE.MathUtils.clamp(-camera.position.y / dir.y, near, near * 3) : near * 2;
-  const at = camera.position.clone().addScaledVector(dir, t);
-  ex.root.position.set(at.x, 0, at.z);
-  ex.root.updateMatrixWorld(true);
+  return ex;
+}
+function showScene() {
   $('#empty').classList.add('hidden');
   $('#list').classList.remove('hidden');
   document.body.classList.add('has-exhibits');
-  layout(); select(ex); assignLights();
-  if (!matchMedia('(pointer: fine)').matches || matchMedia('(max-width: 640px)').matches) toggleLibrary(false); // give the screen back
 }
 
 // meta.light = { type: "point" | "area", color, intensity, distance?, width?, height?, position?: [x, y, z] (asset space) }
@@ -1223,10 +1244,192 @@ $('#bLib').onclick = () => toggleLibrary();
 $('#libClose').onclick = () => toggleLibrary(false);
 $('#libSearch').oninput = renderLibrary;
 $('#lights').onchange = () => { libLights = $('#lights').checked; assignLights(); };
-initLibrary();
+if (!window.EXHIBITION_BUNDLE) initLibrary(); // a saved exhibition opened from disk cannot reach the library
+
+// ---------- save / open an exhibition ----------
+// Save packs the scene into a zip: exhibition.html (this viewer) + data/scene.js + every model as data/*.js.
+// A page opened from disk may load scripts next to it but not read files, so the models travel as scripts:
+// unzip, double-click exhibition.html and it loads everything. Dropping the zip or the folder here opens it too.
+// tags written as \x3c: a literal one would end this script element
+const BUNDLE_MARK = "\x3cscript>window.EXHIBITION_BUNDLE = 'data/';\x3c/script>\n", IMPORTMAP = '\x3cscript type="importmap">';
+const PART = 48e6;          // bytes per script file, so no single string gets too large for the browser
+const VIEWER_URL = 'https://ibagaturiya.github.io/gaussian_exhibition/exhibition_viewer.html';
+
+const b64Of = blob => new Promise((res, rej) => {
+  const r = new FileReader(); r.onerror = () => rej(r.error);
+  r.onload = () => res(r.result.slice(r.result.indexOf(',') + 1)); r.readAsDataURL(blob);
+});
+const bytesOf = b64 => fetch('data:application/octet-stream;base64,' + b64).then(r => r.arrayBuffer());
+const safeName = n => n.replace(/[^\w.-]+/g, '_').slice(0, 60);
+
+async function viewerSource() {
+  // this page's own file, or (opened from disk, where that cannot be read) the published one
+  for (const u of [location.href.split(/[?#]/)[0], VIEWER_URL]) {
+    try { const r = await fetch(u); if (r.ok) return (await r.text()).replace(BUNDLE_MARK, ''); } catch {}
+  }
+  throw new Error('the viewer itself could not be read (needs internet)');
+}
+
+async function saveExhibition() {
+  if (!exhibits.length) return;
+  const name = 'exhibition_' + new Date().toISOString().slice(0, 10);
+  const out = {}, files = [], ids = new Map();
+  const add = f => {
+    if (!ids.has(f)) { ids.set(f, files.length); files.push({ name: f.name, size: f.size, file: f }); }
+    return ids.get(f);
+  };
+  try {
+    const scene = { version: 1, name, saved: new Date().toISOString(), exhibits: [], files: [],
+      settings: { theme, uniform, slotGap, showTitles, libLights, pointScale: +$('#ptSize').value, pointShape, detailMode,
+        radius: +$('#radius').value, budget: +$('#budget').value },
+      // mid-flight the view is saved where the flight ends
+      camera: tween ? { position: tween.pos.toArray(), look: new THREE.Vector3().subVectors(tween.target, tween.pos).normalize().toArray() }
+        : { position: camera.position.toArray(), look: lookDir().toArray() } };
+    for (const ex of exhibits) {
+      if (ex.libraryAsset && !ex.file) { // library GLBs go along, a folder on disk cannot reach the library
+        status(`Fetching ${ex.name}…`);
+        const r = await fetch(ex.libEntry.url); if (!r.ok) throw new Error(`${ex.name}: ${r.status}`);
+        ex.file = new File([await r.blob()], ex.libEntry.file.split('/').pop());
+      }
+      const sidecars = ex.byName ? [...new Set(ex.byName.values())].filter(f => f !== ex.file && !MAIN_EXT.includes(ext(f.name))) : [];
+      scene.exhibits.push({ name: ex.name, file: add(ex.file), sidecars: sidecars.map(add),
+        quaternion: ex.pivot.quaternion.toArray(), userScale: ex.userScale, lift: ex.lift,
+        ...(ex.libraryAsset && { position: ex.root.position.toArray(),
+          library: { name: ex.libEntry.name, file: ex.libEntry.file, group: ex.libEntry.group, meta: ex.libEntry.meta } }) });
+    }
+    let done = 0; const total = files.reduce((s, f) => s + f.size, 0) || 1;
+    for (const [i, f] of files.entries()) {
+      const parts = Math.max(1, Math.ceil(f.size / PART));
+      scene.files.push({ name: f.name, size: f.size, parts });
+      for (let k = 0; k < parts; k++) {
+        status(`Packing ${f.name} (${Math.round(done / total * 100)} %)`);
+        const blob = f.file.slice(k * PART, (k + 1) * PART);
+        out[`${name}/data/${i}_${k}.js`] = strToU8(`exhibitionPart("${await b64Of(blob)}", ${JSON.stringify({ file: i, part: k })});\n`);
+        done += blob.size;
+      }
+    }
+    out[`${name}/data/scene.js`] = strToU8(`exhibitionScene(${JSON.stringify(scene, null, 1)});\n`);
+    const html = await viewerSource();
+    out[`${name}/exhibition.html`] = strToU8(html.replace(IMPORTMAP, BUNDLE_MARK + IMPORTMAP));
+    out[`${name}/README.txt`] = strToU8('Unzip, then double-click exhibition.html (internet needed for the 3D engine).\n'
+      + 'Or open ' + VIEWER_URL + ' and drop this zip onto it, e.g. on a phone or tablet.\n');
+    status('Compressing…');
+    const zipped = await new Promise((res, rej) => zip(out, { level: 1 }, (err, data) => err ? rej(err) : res(data)));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([zipped], { type: 'application/zip' }));
+    a.download = name + '.zip'; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    status(`Saved ${name}.zip (${(zipped.length / 1e6).toFixed(1)} MB)`); setTimeout(() => status(''), 5000);
+  } catch (err) { console.error(err); status('Could not save: ' + (err.message || err)); setTimeout(() => status(''), 6000); }
+}
+
+// sources of a saved exhibition: scene() -> scene object, part(name) -> { b64, head }
+function parsePart(text) {
+  const a = text.indexOf('"'), b = text.indexOf('"', a + 1);
+  return { b64: text.slice(a + 1, b), head: JSON.parse(text.slice(b + 2, text.lastIndexOf(')'))) };
+}
+const parseScene = text => JSON.parse(text.slice(text.indexOf('(') + 1, text.lastIndexOf(')')));
+function zipSource(file) {
+  let entries;
+  const get = async name => {
+    entries ??= unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: f => /(^|\/)data\/[^/]+\.js$/.test(f.name) });
+    const key = Object.keys(entries).find(k => k.endsWith('data/' + name));
+    if (!key) throw new Error('not a saved exhibition (no data/' + name + ')');
+    return strFromU8(entries[key]);
+  };
+  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n)) };
+}
+function folderSource(files) {
+  const get = name => { const f = files.find(f => f.name === name); if (!f) throw new Error('missing data/' + name); return f.text(); };
+  return { scene: async () => parseScene(await get('scene.js')), part: async n => parsePart(await get(n)) };
+}
+function scriptSource(dir) {
+  // opened from disk: the data files arrive as scripts that call back
+  const load = (src, cb) => new Promise((res, rej) => {
+    window[cb] = (...args) => res(args);
+    const s = document.createElement('script'); s.src = dir + src;
+    s.onerror = () => rej(new Error('missing ' + dir + src)); s.onload = () => s.remove();
+    document.head.append(s);
+  });
+  return { scene: async () => (await load('scene.js', 'exhibitionScene'))[0],
+    part: async n => { const [b64, head] = await load(n, 'exhibitionPart'); return { b64, head }; } };
+}
+
+async function openExhibition(src) {
+  try {
+    status('Opening exhibition…');
+    const scene = await src.scene();
+    userImported = true;
+    [...exhibits].forEach(removeExhibit);
+    const st = scene.settings || {};
+    // settings first: the import budget decides how the clouds are read
+    if (st.budget !== undefined) { $('#budget').value = st.budget; readBudget(); }
+    if (st.theme && st.theme !== theme) toggleTheme();
+    if (st.uniform !== undefined && st.uniform !== uniform) {
+      uniform = st.uniform; $('#bScale').classList.toggle('on', uniform);
+      $('#bScale').textContent = uniform ? 'Uniform size' : 'Original units';
+    }
+    if (st.slotGap !== undefined) { $('#gap').value = st.slotGap; $('#gap').oninput(); }
+    if (st.showTitles !== undefined) { $('#titles').checked = st.showTitles; $('#titles').onchange(); }
+    if (st.libLights !== undefined) { $('#lights').checked = st.libLights; libLights = st.libLights; }
+    if (st.pointScale !== undefined) { $('#ptSize').value = st.pointScale; $('#ptSize').oninput(); }
+    if (st.pointShape) setShape(st.pointShape);
+    if (st.detailMode) setMode(st.detailMode);
+    if (st.radius !== undefined) { $('#radius').value = st.radius; readRadius(); }
+    showScene();
+    const cache = new Map(); // file index -> File
+    const fileAt = async i => {
+      if (cache.has(i)) return cache.get(i);
+      const meta = scene.files[i], chunks = [];
+      for (let k = 0; k < meta.parts; k++) {
+        status(`Reading ${meta.name}${meta.parts > 1 ? ` (${k + 1}/${meta.parts})` : ''}…`);
+        chunks.push(await bytesOf((await src.part(`${i}_${k}.js`)).b64));
+      }
+      const f = new File(chunks, meta.name); cache.set(i, f); return f;
+    };
+    const glbs = new Map();
+    for (const [n, e] of scene.exhibits.entries()) {
+      try {
+        const file = await fileAt(e.file);
+        let ex;
+        if (e.library) {
+          if (!glbs.has(e.file)) glbs.set(e.file, gltf.parseAsync(await file.arrayBuffer(), '').then(g => {
+            g.scene.traverse(o => { if (o.isLight) o.visible = false; }); return g.scene; }));
+          ex = addLibraryAsset(await glbs.get(e.file), { ...e.library });
+          ex.root.position.fromArray(e.position || [0, 0, 0]);
+        } else {
+          const sidecars = await Promise.all((e.sidecars || []).map(fileAt));
+          const { byName, urlFor } = resolver([file, ...sidecars]);
+          ex = await loadFile(file, byName, urlFor, p => status(`Simplifying ${n + 1}/${scene.exhibits.length}: ${file.name} ${Math.round(p * 100)}%`));
+          ex.name = e.name || ex.name;
+          addExhibit(ex); ex = exhibits.at(-1);
+        }
+        ex.file = file;
+        ex.pivot.quaternion.fromArray(e.quaternion || [0, 0, 0, 1]);
+        ex.userScale = e.userScale ?? 1; ex.lift = e.lift ?? 0;
+        layout();
+      } catch (err) {
+        console.error(e.name, err);
+        const li = document.createElement('li'); li.className = 'err'; li.textContent = e.name; li.title = String(err?.message || err);
+        $('#list ol').append(li);
+      }
+    }
+    exhibits.forEach(drawLabel); layout(); assignLights(); status('');
+    if (exhibits.some(e => e.lights?.length)) document.querySelectorAll('#detail .lib-only').forEach(el => el.classList.remove('hidden'));
+    if (scene.camera) {
+      tween = null; camera.position.fromArray(scene.camera.position); setLook(new THREE.Vector3().fromArray(scene.camera.look)); applyCam();
+      speed = Math.max(1, ...exhibits.map(e => { const s = e.box.getSize(new THREE.Vector3()); return Math.max(s.x, s.y, s.z) / 2; }));
+    } else if (exhibits.length) overview();
+  } catch (err) {
+    console.error(err); status('Could not open: ' + (err.message || err)); setTimeout(() => status(''), 8000);
+    if (!exhibits.length) { $('#empty').classList.remove('hidden'); $('#list').classList.add('hidden'); document.body.classList.remove('has-exhibits'); }
+  }
+}
+$('#bSave').onclick = saveExhibition;
 
 window.exhibitionReady(files => handleFiles(files));
-loadDemo();
+if (window.EXHIBITION_BUNDLE) openExhibition(scriptSource(window.EXHIBITION_BUNDLE));
+else loadDemo();
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();

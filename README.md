@@ -17,6 +17,8 @@ Drop, paste (⌘V / Ctrl+V) or choose files. On phones and tablets: one finger o
 
 GLBs are in metres, Y up, with the origin as insertion point. `meta` is free-form and shown when the asset is selected; only `meta.light` (`point` or `area`, optional `position`, `distance`, `width`, `height`) adds a light, switched by Settings → Lights (8 nearest at most). Drag a selected library asset to move it. Without `library/index.json` the button stays hidden.
 
+**Save:** the Save button downloads the exhibition as a zip, with every model, its position and the settings. To share it, send the zip: the receiver unzips it and double-clicks `exhibition.html` (internet needed for the 3D engine), or drops the zip onto the viewer page (phones and tablets). Large scans make large zips.
+
 Everything runs locally in your browser; files are not uploaded anywhere. Press **H** in the viewer for controls.
 
 ## License
