@@ -21,6 +21,8 @@ GLBs are in metres, Y up, with the origin as insertion point. `meta` is free-for
 
 **Publish a link:** Publish puts the exhibition online for 1–30 days (or until you delete it) and gives you a link that opens it directly, on phones too. Shows are stored in the public repo [ibagaturiya/exhibitions](https://github.com/ibagaturiya/exhibitions), served by GitHub Pages. A daily job there deletes expired shows and clears the history so the space is freed. Large scans are uploaded in parts, so GitHub's 100 MB file limit doesn't matter, but all live shows together must stay under about 1 GB.
 
+The Publish panel also lists what is **online now**: preview, name, size, publish and end date, how much of the ~1 GB is used, with Open, Copy link and Delete (asks once more; needs the token).
+
 Opening a link needs nothing: no account, no token. Only publishing needs a GitHub token with write access to the `exhibitions` repo (the owner, or collaborators added to that repo). To make one:
 
 1. Open [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) (Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token).

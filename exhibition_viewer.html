@@ -79,6 +79,20 @@
   #publish .row { display: flex; gap: 6px; }
   #publish .note { color: var(--muted); font-size: 11px; }
   #publish a { color: var(--muted); }
+  #publish h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 0; }
+  #publish .used { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  #pubUsed { height: 100%; width: 0; background: var(--accent); }
+  #pubShows { overflow: auto; min-height: 0; display: grid; gap: 8px; }
+  #pubShows .show { display: flex; gap: 8px; align-items: flex-start; }
+  #pubShows .show.ended { opacity: .5; }
+  #pubShows .thumb { width: 64px; height: 40px; flex: none; border-radius: 3px; background: var(--line) center / cover; }
+  #pubShows .info { min-width: 0; display: grid; gap: 1px; }
+  #pubShows .info b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pubShows .info > span { color: var(--muted); font-size: 11px; }
+  #pubShows .acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+  #pubShows .acts button { padding: 1px 7px; font-size: 11px; }
+  #pubShows .acts button.del { min-width: 7.5em; } /* same size when it asks "Really delete?", so the second click hits it */
+  #pubShows .acts a { font-size: 11px; }
   #libItems { overflow: auto; min-height: 0; }
   #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
   #libItems .item { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
@@ -86,7 +100,7 @@
   #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; flex: none; background: var(--line); }
   #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #libItems .note { color: var(--muted); padding: 4px 0; }
-  body:not(.has-exhibits) #bSave, body:not(.has-exhibits) #bPublish { display: none; }
+  body:not(.has-exhibits) #bSave { display: none; }
   .touch-only { display: none; }
   @media (pointer: coarse) {
     #library select, #library input, #publish select, #publish input { font-size: 16px; } /* iOS zooms into smaller inputs */
@@ -205,19 +219,19 @@
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.12 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.13 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.12 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.13 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
   <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
   <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
-  <button id="bPublish" title="Put the exhibition online for a few days and get a link to share">Publish</button>
+  <button id="bPublish" title="Put the exhibition online for a few days and get a link to share; see what is online">Publish</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
@@ -262,6 +276,7 @@
 </div>
 <div id="publish" class="ui hidden">
   <header><h1>Publish a link</h1><button id="pubClose" aria-label="close">×</button></header>
+  <label>Name <input id="pubName" autocomplete="off" placeholder="optional, shown in the list"></label>
   <label>Keep online for
     <select id="pubDays"><option value="1">1 day</option><option value="3">3 days</option><option value="7" selected>7 days</option>
       <option value="14">14 days</option><option value="30">30 days</option><option value="0">until I delete it</option></select></label>
@@ -275,6 +290,9 @@
     <div id="pubNote" class="note"></div>
   </div>
   <div class="note">Published exhibitions are public. <a id="pubForget" href="#">Forget the token</a></div>
+  <h2 id="pubShowsHead">Online now</h2>
+  <div class="used"><div id="pubUsed"></div></div>
+  <div id="pubShows"></div>
 </div>
 <input id="file" type="file" multiple hidden>
 
@@ -1508,43 +1526,85 @@ function togglePublish(open = $('#publish').classList.contains('hidden')) {
   $('#bPublish').classList.toggle('on', open);
   $('#pubTokenRow').classList.toggle('hidden', !!readToken());
   if (open && !$('#pubRepo').value) $('#pubRepo').value = readKey(REPO_KEY) || PUBLISH.repo;
+  if (open) listShows();
   if (!open) document.activeElement?.blur();
 }
 
-async function publishExhibition() {
-  const token = $('#pubToken').value.trim() || readToken();
-  const repo = $('#pubRepo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/+$/, '');
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { $('#pubRepo').focus(); return status('Repository should look like owner/name.'); }
-  if (!token) { $('#pubTokenRow').classList.remove('hidden'); $('#pubToken').focus(); return status('Paste a GitHub token first (see the README).'); }
-  const pages = pagesOf(repo);
-  const gh = async (path, method = 'GET', body) => {
+// GitHub API for one repo; without a token it can only read (public repos, 60 requests an hour)
+function ghClient(repo, token) {
+  return async (path, method = 'GET', body) => {
     const r = await fetch(`https://api.github.com/repos/${repo}/${path}`, { method, cache: 'no-store',
-      headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', ...(body && { 'Content-Type': 'application/json' }) },
+      headers: { ...(token && { Authorization: 'Bearer ' + token }), Accept: 'application/vnd.github+json', ...(body && { 'Content-Type': 'application/json' }) },
       body: body && JSON.stringify(body) });
     if (!r.ok) {
       const msg = (await r.json().catch(() => ({}))).message || r.statusText;
       throw Object.assign(new Error(r.status === 401 ? 'the token was not accepted'
         : r.status === 404 ? `no access to ${repo}. Check the name, and that the token covers this repo with Contents: Read and write`
         : r.status === 409 ? `${repo} is empty. Create it with "Use this template" on github.com/${PUBLISH.repo}`
+        : r.status === 403 && !token ? 'GitHub is busy for visitors without a token, try again in an hour'
         : `GitHub: ${msg}`), { status: r.status });
     }
     return r.json();
   };
-  const days = +$('#pubDays').value;
+}
+// one commit on top of the branch; rebuilt on the new head if someone else pushed meanwhile
+async function commitEntries(gh, entries, message) {
+  for (let attempt = 0; ; attempt++) {
+    const parent = (await gh(`git/ref/heads/${PUBLISH.branch}`)).object.sha;
+    const baseTree = (await gh(`git/commits/${parent}`)).tree.sha;
+    const tree = await gh('git/trees', 'POST', { base_tree: baseTree, tree: entries });
+    const commit = await gh('git/commits', 'POST', { message, tree: tree.sha, parents: [parent] });
+    try { return await gh(`git/refs/heads/${PUBLISH.branch}`, 'PATCH', { sha: commit.sha }); }
+    catch (err) { if (err.status !== 422 || attempt >= 2) throw err; }
+  }
+}
+function publishTarget() {
+  const repo = $('#pubRepo').value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/+$/, '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { $('#pubRepo').focus(); status('Repository should look like owner/name.'); return null; }
+  return { repo, pages: pagesOf(repo), token: $('#pubToken').value.trim() || readToken() };
+}
+function needToken() {
+  $('#pubTokenRow').classList.remove('hidden'); $('#pubToken').focus();
+  status('Paste a GitHub token first (see the README).'); setTimeout(() => status(''), 6000);
+}
+// small picture of the current view, for the list of shows: taken by the render loop right after
+// it draws a frame (the canvas is only readable then, and splats are drawn only in the loop)
+let snapRequest = null;
+function snapshot() {
+  const was = selBox.visible; selBox.visible = false;
+  return new Promise(res => snapRequest = () => {
+    snapRequest = null; selBox.visible = was;
+    const src = renderer.domElement, c = document.createElement('canvas'); c.width = 320; c.height = 200;
+    const k = Math.min(src.width / c.width, src.height / c.height), w = c.width * k, h = c.height * k;
+    c.getContext('2d').drawImage(src, (src.width - w) / 2, (src.height - h) / 2, w, h, 0, 0, c.width, c.height);
+    c.toBlob(res, 'image/jpeg', .8);
+  });
+}
+const fmtMB = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' kB';
+const fmtDay = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+async function publishExhibition() {
+  if (!exhibits.length) { status('Add models first, then publish them.'); return setTimeout(() => status(''), 4000); }
+  const t = publishTarget(); if (!t) return;
+  const { repo, pages, token } = t;
+  if (!token) return needToken();
+  const gh = ghClient(repo, token);
+  const days = +$('#pubDays').value, title = $('#pubName').value.trim();
   const id = new Date().toISOString().slice(0, 10) + '-' + crypto.getRandomValues(new Uint32Array(2)).reduce((s, v) => s + v.toString(36), '').slice(0, 8);
   const dir = `shows/${id}/`;
   $('#pubGo').disabled = true; $('#pubOut').classList.add('hidden');
   try {
+    const thumb = await snapshot(); // before anything moves
     status('Connecting to GitHub…');
     const head = await gh(`git/ref/heads/${PUBLISH.branch}`);
     const base = await gh(`git/commits/${head.object.sha}`);
     const used = (await gh(`git/trees/${base.tree.sha}?recursive=1`)).tree.reduce((s, e) => s + (e.size || 0), 0);
     keepToken(token); keepKey(REPO_KEY, repo); $('#pubToken').value = ''; $('#pubTokenRow').classList.add('hidden'); // it worked: remember it
-    const { scene, files } = await sceneState(id);
+    const { scene, files } = await sceneState(title || id);
     const total = files.reduce((s, f) => s + f.size, 0);
     if (used + total > PUBLISH.maxBytes)
-      throw new Error(`not enough space: ${(used / 1e6).toFixed(0)} MB in use, this needs ${(total / 1e6).toFixed(0)} MB more, about 900 MB fit. `
-        + 'Wait for older shows to expire, or delete some in the repo.');
+      throw new Error(`not enough space: ${fmtMB(used)} in use, this needs ${fmtMB(total)} more, about 900 MB fit. `
+        + 'Delete a show in the list below, or wait for older ones to end.');
     const entries = []; let done = 0;
     for (const [i, f] of files.entries()) {
       for (let k = 0; k < scene.files[i].parts; k++) {
@@ -1555,25 +1615,20 @@ async function publishExhibition() {
         done += blob.size;
       }
     }
-    const show = { name: scene.name, created: new Date().toISOString(), expires: days ? new Date(Date.now() + days * 864e5).toISOString() : null };
+    if (thumb) entries.push({ path: dir + 'thumb.jpg', mode: '100644', type: 'blob', sha: (await gh('git/blobs', 'POST', { content: await b64Of(thumb), encoding: 'base64' })).sha });
+    const show = { name: title || id, created: new Date().toISOString(), expires: days ? new Date(Date.now() + days * 864e5).toISOString() : null, size: total };
     entries.push({ path: dir + 'scene.json', mode: '100644', type: 'blob', content: JSON.stringify(scene) },
       { path: dir + 'show.json', mode: '100644', type: 'blob', content: JSON.stringify(show, null, 1) + '\n' });
     status('Saving…');
-    for (let attempt = 0; ; attempt++) { // someone else may have pushed meanwhile: rebuild on the new head
-      const parent = attempt ? (await gh(`git/ref/heads/${PUBLISH.branch}`)).object.sha : head.object.sha;
-      const baseTree = attempt ? (await gh(`git/commits/${parent}`)).tree.sha : base.tree.sha;
-      const tree = await gh('git/trees', 'POST', { base_tree: baseTree, tree: entries });
-      const commit = await gh('git/commits', 'POST', { message: `Publish ${id}` + (show.expires ? `, until ${show.expires.slice(0, 10)}` : ''), tree: tree.sha, parents: [parent] });
-      try { await gh(`git/refs/heads/${PUBLISH.branch}`, 'PATCH', { sha: commit.sha }); break; }
-      catch (err) { if (err.status !== 422 || attempt >= 2) throw err; }
-    }
+    await commitEntries(gh, entries, `Publish ${id}` + (show.expires ? `, until ${show.expires.slice(0, 10)}` : ''));
     const link = `${VIEWER_URL}?open=${encodeURIComponent(pages + dir)}`;
-    $('#pubLink').value = link; $('#pubOut').classList.remove('hidden');
+    $('#pubLink').value = link; $('#pubOut').classList.remove('hidden'); $('#pubName').value = '';
     const until = show.expires ? `until ${new Date(show.expires).toLocaleDateString()}` : 'until you delete it';
     $('#pubNote').textContent = `Online ${until}. GitHub needs a minute or two before the link works…`;
     status('');
+    listShows({ id, show, size: total, thumb });
     // tell when GitHub Pages serves it
-    for (let t = 0; t < 60; t++) {
+    for (let n = 0; n < 60; n++) {
       await new Promise(r => setTimeout(r, 10000));
       if ($('#pubLink').value !== link) return;
       const r = await fetch(pages + dir + 'show.json', { cache: 'no-store' }).catch(() => null);
@@ -1586,6 +1641,102 @@ async function publishExhibition() {
     if (err.status === 401 || err.status === 404) $('#pubTokenRow').classList.remove('hidden'); // another repo may need another token
     setTimeout(() => status(''), 10000);
   } finally { $('#pubGo').disabled = false; }
+}
+
+// ---------- the shows online ----------
+// Read from the repo tree (one API call) plus each show.json. `fresh` is a show just published,
+// which the tree and raw files may not show yet for a few minutes.
+let listing = 0;
+async function listShows(fresh) {
+  const t = publishTarget(); if (!t) return;
+  const { repo, pages, token } = t, my = ++listing;
+  const box = $('#pubShows'), head = $('#pubShowsHead');
+  head.textContent = 'Online now · loading…';
+  try {
+    const tree = (await ghClient(repo, token)(`git/trees/${PUBLISH.branch}?recursive=1`)).tree;
+    const shows = new Map();
+    for (const e of tree) {
+      const m = e.path.match(/^shows\/([^/]+)\/(.+)$/); if (!m || e.type !== 'blob') continue;
+      const s = shows.get(m[1]) || { id: m[1], size: 0, thumb: false, paths: [] };
+      s.size += e.size || 0; s.paths.push(e.path); if (m[2] === 'thumb.jpg') s.thumb = true;
+      shows.set(m[1], s);
+    }
+    const raw = `https://raw.githubusercontent.com/${repo}/${PUBLISH.branch}/`;
+    const json = u => fetch(u, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    await Promise.all([...shows.values()].map(async s => { // raw files can lag a few minutes behind: then try Pages
+      s.show = await json(`${raw}shows/${s.id}/show.json`) || await json(`${pages}shows/${s.id}/show.json`);
+    }));
+    if (fresh) { // just published here: shown right away, with the picture from memory
+      const s = shows.get(fresh.id) || { id: fresh.id, size: fresh.size, thumb: false, paths: null };
+      s.show ??= fresh.show; s.thumbBlob = fresh.thumb; shows.set(fresh.id, s);
+    }
+    if (my !== listing) return;
+    const list = [...shows.values()].filter(s => s.show).sort((a, b) => (b.show.created || '').localeCompare(a.show.created || ''));
+    const used = tree.reduce((s, e) => s + (e.size || 0), 0) + (fresh && !tree.some(e => e.path.startsWith(`shows/${fresh.id}/`)) ? fresh.size : 0);
+    head.textContent = `Online now · ${list.length} show${list.length === 1 ? '' : 's'} · ${fmtMB(used)} of ~900 MB`;
+    $('#pubUsed').style.width = Math.min(100, used / PUBLISH.maxBytes * 100) + '%';
+    box.replaceChildren(...list.map(s => showRow(s, repo, pages, raw)));
+    if (!list.length) box.innerHTML = '<div class="note">Nothing online.</div>';
+  } catch (err) {
+    if (my !== listing) return;
+    head.textContent = 'Online now'; box.innerHTML = '';
+    const n = document.createElement('div'); n.className = 'note'; n.textContent = 'Could not list the shows: ' + (err.message || err); box.append(n);
+  }
+}
+function showRow(s, repo, pages, raw) {
+  const row = document.createElement('div'); row.className = 'show';
+  const img = document.createElement('div'); img.className = 'thumb';
+  const src = s.thumbBlob ? URL.createObjectURL(s.thumbBlob) : s.thumb ? `${raw}shows/${s.id}/thumb.jpg` : null;
+  if (src) img.style.backgroundImage = `url("${src}")`;
+  const info = document.createElement('div'); info.className = 'info';
+  const name = document.createElement('b'); name.textContent = s.show.name || s.id;
+  const ended = s.show.expires && Date.parse(s.show.expires) < Date.now();
+  const when = document.createElement('span');
+  when.textContent = `${fmtMB(s.show.size ?? s.size)} · ${s.show.created ? fmtDay(s.show.created) : ''} → `
+    + (ended ? 'ended, removed soon' : s.show.expires ? 'ends ' + fmtDay(s.show.expires) : 'until deleted');
+  const link = `${VIEWER_URL}?open=${encodeURIComponent(pages + 'shows/' + s.id + '/')}`;
+  const acts = document.createElement('span'); acts.className = 'acts';
+  const open = document.createElement('a'); open.href = link; open.target = '_blank'; open.rel = 'noopener'; open.textContent = 'Open';
+  const copy = document.createElement('button'); copy.textContent = 'Copy link';
+  copy.onclick = async () => { try { await navigator.clipboard.writeText(link); copy.textContent = 'Copied'; } catch { $('#pubLink').value = link; $('#pubOut').classList.remove('hidden'); $('#pubLink').select(); } setTimeout(() => copy.textContent = 'Copy link', 2000); };
+  const del = document.createElement('button'); del.className = 'del'; del.textContent = 'Delete';
+  let armed = 0;
+  del.onclick = () => {
+    if (Date.now() - armed < 500) return; // a quick double-click is not a confirmation
+    if (!del.classList.contains('on')) { // a second, deliberate click deletes
+      del.classList.add('on'); del.textContent = 'Really delete?'; armed = Date.now();
+      setTimeout(() => { del.classList.remove('on'); del.textContent = 'Delete'; }, 4000); return;
+    }
+    deleteShow(s, repo, row);
+  };
+  acts.append(open, copy, del);
+  info.append(name, when, acts);
+  row.append(img, info);
+  if (ended) row.classList.add('ended');
+  return row;
+}
+async function deleteShow(s, repo, row) {
+  const token = $('#pubToken').value.trim() || readToken();
+  if (!token) return needToken();
+  row.classList.add('ended'); row.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    const gh = ghClient(repo, token);
+    let paths = s.paths;
+    if (!paths) { // just published: ask the tree for its files
+      const tree = (await gh(`git/trees/${PUBLISH.branch}?recursive=1`)).tree;
+      paths = tree.filter(e => e.type === 'blob' && e.path.startsWith(`shows/${s.id}/`)).map(e => e.path);
+    }
+    // "Remove show" commits make the cleanup workflow clear the history too, so the space is freed
+    await commitEntries(gh, paths.map(path => ({ path, mode: '100644', type: 'blob', sha: null })), `Remove show ${s.id}`);
+    keepToken(token); $('#pubToken').value = ''; $('#pubTokenRow').classList.add('hidden');
+    row.remove(); status(`Deleted ${s.show?.name || s.id}. Its link stops working within a few minutes.`); setTimeout(() => status(''), 6000);
+    listShows();
+  } catch (err) {
+    console.error(err); row.classList.remove('ended'); row.querySelectorAll('button').forEach(b => b.disabled = false);
+    status('Could not delete: ' + (err.message || err)); setTimeout(() => status(''), 8000);
+    if (err.status === 401) keepToken('');
+    if (err.status === 401 || err.status === 404) $('#pubTokenRow').classList.remove('hidden');
+  }
 }
 
 // a published show, or any folder with a saved exhibition, opened by URL
@@ -1621,6 +1772,7 @@ $('#bSave').onclick = saveExhibition;
 $('#bPublish').onclick = () => togglePublish();
 $('#pubClose').onclick = () => togglePublish(false);
 $('#pubGo').onclick = publishExhibition;
+$('#pubRepo').onchange = () => listShows();
 $('#pubCopy').onclick = async () => {
   try { await navigator.clipboard.writeText($('#pubLink').value); $('#pubCopy').textContent = 'Copied'; }
   catch { $('#pubLink').select(); }
@@ -1778,6 +1930,7 @@ renderer.setAnimationLoop(() => {
   }
   if ((detailClock += dt) > .25) { detailClock = 0; updateDetail(); }
   renderer.render(scene, camera);
+  snapRequest?.();
 });
 </script>
 </body>
