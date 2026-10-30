@@ -1,0 +1,1337 @@
+<!doctype html>
+<!-- Gaussian Exhibition · Site viewer. Copyright (C) 2026 Ivan Bagaturiya.
+     Licensed under the GNU Affero General Public License v3.0 or later, see LICENSE.
+     Source: https://github.com/ibagaturiya/gaussian_exhibition -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Scan Site</title>
+<style>
+  :root {
+    --bg: #1b1b1a; --fg: #e8e6e1; --muted: #8d8a83; --line: #3a3936;
+    --panel: rgba(27,27,26,.82); --accent: #d9442b;
+  }
+  :root[data-theme="light"] {
+    --bg: #eeece7; --fg: #1d1d1b; --muted: #6f6c66; --line: #cfccc4;
+    --panel: rgba(238,236,231,.86); --accent: #c23a22;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  .ui { position: fixed; background: var(--panel); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
+  h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 4px; }
+  button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+  button:hover { border-color: var(--fg); }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); margin: 0; }
+  input[type=number] { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
+    border-radius: 4px; padding: 2px 4px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+  select { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+  select option { color: #1d1d1b; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+  .note { color: var(--muted); font-size: 11px; }
+  .fold { cursor: pointer; user-select: none; }
+  .fold::after { content: ' ▾'; color: var(--muted); }
+  .folded .fold::after { content: ' ▸'; }
+  .folded > :not(.fold) { display: none !important; }
+
+  #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  #empty div { text-align: center; color: var(--muted); pointer-events: auto; padding: 16px; max-width: 460px; }
+  #empty strong { display: block; color: var(--fg); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
+  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: none; pointer-events: none; }
+  body.dragging #drop { display: block; }
+  #status { top: 16px; left: 50%; transform: translateX(-50%); display: none; color: var(--muted); max-width: calc(100vw - 32px); }
+  #hover { position: fixed; pointer-events: none; font-size: 11px; padding: 4px 7px; white-space: nowrap; display: none; }
+  #version { position: fixed; top: 4px; right: 18px; font-size: 10px; color: var(--muted); letter-spacing: .02em; pointer-events: none; }
+  #version a { color: inherit; pointer-events: auto; }
+
+  #bar { top: 20px; right: 16px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; padding: 6px; max-width: calc(100vw - 32px); }
+
+  #left { position: fixed; top: 16px; left: 16px; width: min(330px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+  #left > .ui { position: static; pointer-events: auto; }
+  #scans ol { margin: 0; padding: 0; list-style: none; max-height: 32vh; overflow: auto; }
+  #scans li { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+  #scans li .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  #scans li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #scans li .k { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #scans li.sel .nm { color: var(--accent); }
+  #scans li.off .nm { color: var(--muted); text-decoration: line-through; }
+  #scans li.err .nm { color: var(--muted); text-decoration: line-through; }
+
+  #sel .grid { display: grid; grid-template-columns: auto 1fr auto 1fr auto 1fr; gap: 4px 6px; align-items: center; }
+  #sel .grid label { color: var(--muted); font-size: 11px; }
+  #sel .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #sel .row button { padding: 2px 8px; }
+
+  #align ol { margin: 4px 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
+  #align .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
+  #align .row label { display: flex; gap: 4px; align-items: center; color: var(--muted); }
+  #align .step { color: var(--accent); margin: 4px 0; }
+
+  #detail { bottom: 16px; right: 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; width: min(330px, calc(100vw - 32px)); }
+  #detail .fold { grid-column: 1 / -1; margin: 0; }
+  #detail label { color: var(--muted); }
+  #detail output { font-variant-numeric: tabular-nums; min-width: 5em; text-align: right; }
+  #detail .seg { grid-column: 2 / 4; display: flex; gap: 4px; }
+  #detail .seg button { flex: 1; padding: 2px 6px; }
+  #detail .span { grid-column: 1 / -1; }
+  #legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+  #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  #covStats { font-variant-numeric: tabular-nums; }
+
+  #help { bottom: 16px; left: 50%; transform: translateX(-50%); color: var(--muted); max-width: calc(100vw - 32px); display: none; z-index: 3; }
+  #help.show { display: block; }
+  #help b { color: var(--fg); font-weight: 600; }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 0 10px 0 0; vertical-align: top; }
+
+  @media (max-width: 760px) {
+    #detail { bottom: 8px; right: 8px; left: 8px; width: auto; }
+    #left { top: 70px; left: 8px; width: calc(100vw - 16px); max-height: 40vh; overflow: auto; }
+    #bar { right: 8px; top: 14px; }
+  }
+</style>
+<script>
+// drag & drop before the module loads, so early drops are not lost
+(() => {
+  const queue = [];
+  window.siteFiles = { queue, handler: null };
+  addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+  addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+  addEventListener('drop', e => {
+    e.preventDefault(); document.body.classList.remove('dragging');
+    const files = [...(e.dataTransfer?.files || [])];
+    if (!files.length) return;
+    if (window.siteFiles.handler) window.siteFiles.handler(files); else queue.push(files);
+  });
+  addEventListener('load', () => setTimeout(() => {
+    if (!window.siteFiles.handler) {
+      const s = document.getElementById('status');
+      s.style.display = 'block';
+      s.textContent = 'The 3D viewer did not start. It needs internet for its libraries (cdn.jsdelivr.net). Reload with Cmd+Shift+R.';
+    }
+  }, 12000));
+})();
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+  "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@2.2.0/dist/spark.module.js"
+} }
+</script>
+</head>
+<body>
+<div id="empty"><div>
+  <strong>Drop your scans here</strong>
+  several splats of one site, to align them and see where coverage is missing<br>
+  .ply .spz .splat .ksplat · a saved alignment (.json)<br><br>
+  <button id="pick">or choose files…</button>
+  <p class="note">Scaniverse: open a scan → Share → Export → Splat → PLY or SPZ.</p>
+</div></div>
+<div id="drop"></div>
+<div id="status" class="ui"></div>
+<div id="hover" class="ui"></div>
+<div id="version">site viewer v0.1 · <a href="exhibition_viewer.html">exhibition</a> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+
+<div id="bar" class="ui">
+  <button id="bAdd" title="Add scans or a saved alignment">+ Add</button>
+  <button id="bSave" title="Download the alignment (positions of all scans) as a .json file">Save alignment</button>
+  <button id="bTop" title="T: look straight down on the whole site">Top view</button>
+  <button id="bAll" title="O: see all scans">Overview</button>
+  <button id="bTint" title="K: colour each scan, to see seams and overlaps">Colours</button>
+  <button id="bGrid" class="on" title="G with Shift: the 1 m grid on the ground (off by itself when a sky is shown)">Grid</button>
+  <button id="bCov" title="C: coverage map on the ground">Coverage</button>
+  <button id="bTheme" title="B">Light</button>
+  <button id="bHelp" title="H">?</button>
+</div>
+
+<div id="left">
+  <div id="scans" class="ui hidden"><h1 class="fold">Scans <span id="scanCount" class="muted"></span></h1><ol></ol></div>
+
+  <div id="sel" class="ui hidden">
+    <h1 id="selName">–</h1>
+    <div class="grid">
+      <label for="px">x</label><input id="px" type="number" step="0.05">
+      <label for="py">y</label><input id="py" type="number" step="0.05">
+      <label for="pz">z</label><input id="pz" type="number" step="0.05">
+      <label for="ry" title="turn around the vertical axis">turn°</label><input id="ry" type="number" step="0.5">
+      <label for="rx" title="tilt forward / back">tilt°</label><input id="rx" type="number" step="0.1">
+      <label for="rz" title="tilt sideways">roll°</label><input id="rz" type="number" step="0.1">
+      <label for="sc" title="Scaniverse scans are in metres: keep 1 unless a scan is clearly off">scale</label><input id="sc" type="number" step="0.001" min="0.01">
+      <label for="cr" title="Radius in metres around the scan's centre; outside it nothing is drawn, picked or counted. Hides the sky dome Scaniverse puts around each scan. 0 = show everything">crop m</label><input id="cr" type="number" step="0.5" min="0">
+      <button id="bCropAuto" title="Back to the automatic crop radius" style="grid-column: 5 / 7; padding: 1px 6px">auto crop</button>
+    </div>
+    <div class="row">
+      <button id="gMove" title="M: drag arrows to move">Move</button>
+      <button id="gTurn" title="R: drag the ring to turn">Turn</button>
+      <button id="bAlign" title="Pick the same spots on this scan and on another one">Align by points</button>
+      <button id="bLevel" title="Set tilt and roll back to 0">Level</button>
+      <button id="bFlip" title="F: turn the scan upside down, if it loaded wrong way up">Flip</button>
+      <button id="bGround" title="G: put the lowest part of the scan at height 0">On ground</button>
+      <button id="bFly" title="Double-click in the list">Fly to</button>
+      <button id="bRemove" title="Del: remove from the viewer (the file is not touched)">Remove</button>
+    </div>
+  </div>
+
+  <div id="align" class="ui hidden">
+    <h1>Align <span id="alMoving"></span></h1>
+    <div id="alStep" class="step"></div>
+    <ol id="alPairs"></ol>
+    <div class="row">
+      <label title="Scaniverse scans are already level (phone gravity): only turn and move"><input id="alLevel" type="checkbox" checked> keep level</label>
+      <label title="Only if a scan has the wrong size"><input id="alScale" type="checkbox"> allow scale</label>
+    </div>
+    <div class="row">
+      <button id="alApply" disabled>Apply</button>
+      <button id="alUndoPt" title="Remove the last picked point">Back</button>
+      <button id="alClose">Done</button>
+    </div>
+    <div id="alNote" class="note"></div>
+  </div>
+</div>
+
+<div id="detail" class="ui">
+  <h1 class="fold">Detail &amp; coverage</h1>
+  <label for="budget" title="How many splats are drawn at most. Spark picks the most useful ones for the current view: near and on screen first.">Splats</label><input id="budget" type="range" min="0" max="100"><output id="budgetOut"></output>
+  <label for="pixel" title="Splats smaller than this on screen are merged into coarser ones. Larger = faster.">Coarser</label><input id="pixel" type="range" min="0" max="100" value="0"><output id="pixelOut"></output>
+  <label for="near" title="Scans whose nearest edge is within this distance get full detail; farther ones are drawn coarse">Full detail</label><input id="near" type="range" min="0" max="100" value="55"><output id="nearOut"></output>
+  <label for="far" title="Scans farther than this are not drawn at all">Hide beyond</label><input id="far" type="range" min="0" max="100" value="100"><output id="farOut"></output>
+  <label for="sky" title="One scan's sky dome, drawn behind the whole site like a real sky (it moves with you, so it is always far away)">Sky</label>
+  <select id="sky" style="grid-column: 2 / 4; min-width: 0"><option value="">none</option></select>
+  <div class="span note" id="perf"></div>
+  <div id="covBox" class="span hidden" style="display:grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center;">
+    <h2 class="span" style="grid-column: 1 / -1; margin-bottom: 0">Coverage</h2>
+    <label>Show</label><div class="seg"><button id="cDensity" class="on" title="How many splats per square">density</button><button id="cOverlap" title="How many scans cover each square">overlap</button><button id="cScans" title="Which scan covers each square">scans</button></div>
+    <label for="cell">Square</label><input id="cell" type="range" min="0" max="100" value="45"><output id="cellOut"></output>
+    <label for="band" title="Only count splats up to this height above the ground: leave out roofs and trees to see the walkable area">Up to</label><input id="band" type="range" min="0" max="100" value="100"><output id="bandOut"></output>
+    <label for="covSplats">Splats</label><span style="grid-column: 2 / 4; display: flex; gap: 6px; align-items: center"><input id="covSplats" type="checkbox" checked> <span class="muted">show scans over the map</span></span>
+    <div id="legend" class="span"></div>
+    <div id="covStats" class="span note"></div>
+  </div>
+</div>
+
+<div id="help" class="ui"><table>
+  <tr><td><b>Left-drag</b></td><td>orbit around the point you grab</td><td><b>Click</b></td><td>select scan</td></tr>
+  <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Double-click</b></td><td>fly to that point</td></tr>
+  <tr><td><b>Middle / Shift-drag</b></td><td>pan</td><td><b>M / R</b></td><td>move / turn selected (gizmo)</td></tr>
+  <tr><td><b>Wheel</b></td><td>move towards the cursor</td><td><b>↑ ↓ ← →</b></td><td>nudge selected 5 cm (Shift 50 cm, Alt 1 cm)</td></tr>
+  <tr><td><b>W A S D</b></td><td>fly</td><td><b>, / .</b></td><td>turn selected ±0.5° (Shift ±5°)</td></tr>
+  <tr><td><b>Q / E</b></td><td>up / down</td><td><b>PgUp / PgDn</b></td><td>raise / lower selected</td></tr>
+  <tr><td><b>1 / 2</b></td><td>slower / faster (Shift ×3)</td><td><b>⌘Z</b></td><td>undo a move</td></tr>
+  <tr><td><b>O / T</b></td><td>overview / top view</td><td><b>N / P</b></td><td>next / previous scan</td></tr>
+  <tr><td><b>C / K</b></td><td>coverage / scan colours</td><td><b>Esc</b></td><td>deselect, end aligning</td></tr>
+  <tr><td><b>V</b></td><td>show / hide selected</td><td><b>Del</b></td><td>remove selected</td></tr>
+</table></div>
+<input id="file" type="file" multiple hidden>
+
+<script type="module">
+import * as THREE from 'three';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { SplatMesh, SparkRenderer, SplatEdit, SplatEditSdf, SplatEditSdfType, SplatEditRgbaBlendMode } from '@sparkjsdev/spark';
+
+const $ = s => document.querySelector(s);
+const ext = n => n.toLowerCase().split('.').pop();
+const status = msg => { const s = $('#status'); s.style.display = msg ? 'block' : 'none'; s.textContent = msg || ''; };
+const flash = (msg, ms = 3500) => { status(msg); setTimeout(() => { if ($('#status').textContent === msg) status(''); }, ms); };
+const fmtM = m => m === Infinity ? 'everywhere' : m < 10 ? m.toFixed(1) + ' m' : Math.round(m) + ' m';
+const fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + ' M' : n >= 1e3 ? Math.round(n / 1e3) + ' k' : String(n);
+const DEG = Math.PI / 180;
+
+// ---------- scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+const dom = renderer.domElement;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.02, 20000);
+camera.position.set(0, 20, 40);
+const spark = new SparkRenderer({ renderer });
+scene.add(spark);
+
+const THEMES = {
+  dark:  { bg: 0x1b1b1a, grid: 0x3a3936, grid2: 0x262624 },
+  light: { bg: 0xeeece7, grid: 0xc9c5bc, grid2: 0xdedad2 },
+};
+let theme = 'dark', grid;
+function applyTheme() {
+  const t = THEMES[theme];
+  document.documentElement.dataset.theme = theme;
+  scene.background = new THREE.Color(t.bg);
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  grid = new THREE.GridHelper(2000, 1000, t.grid, t.grid2);
+  grid.renderOrder = -10; // opaque and first: splats write no depth, so anything transparent would draw over them
+  scene.add(grid);
+  showGrid();
+  $('#bTheme').textContent = theme === 'dark' ? 'Light' : 'Dark';
+  if (coverage.on) drawCoverage();
+}
+
+// ---------- scans ----------
+// Each scan: root (its place on the site: position = centre of the scan, rotation, scale)
+//   └ inner (offset so the scan's centre sits at root's origin) └ splat (flipped from OpenCV y-down to y-up)
+// Rotating the root turns the scan around its own centre.
+const PALETTE = ['#e4572e', '#29a3a3', '#f3a712', '#7a5cff', '#6aaa3a', '#e83f8c', '#3b8bd9', '#b5651d', '#00b386', '#c9a227', '#8e44ad', '#d35400'];
+const scans = [];
+let selected = null;
+window.site = { scans, camera, scene, spark }; // for inspection from the console
+
+const MAX_SAMPLES = 150000;
+const PLY_SIZE = { float: 4, float32: 4, double: 8, float64: 8, uchar: 1, uint8: 1, char: 1, int8: 1, short: 2, ushort: 2, int16: 2, uint16: 2, int: 4, uint: 4, int32: 4, uint32: 4 };
+
+// splat centres as stored in the file, faint splats left out; `stride` is how many splats each sample stands for
+async function splatSamples(name, buf) {
+  const out = [];
+  const e = ext(name);
+  if (e === 'ply') {
+    const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 65536)));
+    const end = head.indexOf('end_header') + 'end_header'.length + 1;
+    const lines = head.slice(0, end).split('\n');
+    const binary = /format binary_little_endian/.test(head);
+    const first = (lines.find(l => l.startsWith('element ')) || '').split(/\s+/);
+    if (binary && first[1] === 'vertex') {
+      const n = +first[2];
+      const props = []; let inVertex = false, off = 0;
+      for (const l of lines) {
+        const t = l.trim().split(/\s+/);
+        if (t[0] === 'element') inVertex = t[1] === 'vertex';
+        else if (t[0] === 'property' && inVertex) { props.push({ type: t[1], name: t[2], off }); off += PLY_SIZE[t[1]] || 4; }
+      }
+      const P = Object.fromEntries(props.map(p => [p.name, p]));
+      if (P.x && P.x.type.startsWith('float')) {
+        const dv = new DataView(buf, end), stride = Math.max(1, Math.floor(n / MAX_SAMPLES));
+        for (let i = 0; i < n; i += stride) {
+          const o = i * off;
+          if (P.opacity && 1 / (1 + Math.exp(-dv.getFloat32(o + P.opacity.off, true))) < .3) continue;
+          out.push(dv.getFloat32(o + P.x.off, true), dv.getFloat32(o + P.y.off, true), dv.getFloat32(o + P.z.off, true));
+        }
+        return { pts: new Float32Array(out), stride };
+      }
+    }
+  } else if (e === 'splat') {
+    const dv = new DataView(buf), n = Math.floor(buf.byteLength / 32), stride = Math.max(1, Math.floor(n / MAX_SAMPLES));
+    for (let i = 0; i < n; i += stride) {
+      if (dv.getUint8(i * 32 + 27) < 77) continue;
+      out.push(dv.getFloat32(i * 32, true), dv.getFloat32(i * 32 + 4, true), dv.getFloat32(i * 32 + 8, true));
+    }
+    return { pts: new Float32Array(out), stride };
+  }
+  // other formats: decode once without LoD just to read the centres
+  const tmp = new SplatMesh({ fileBytes: new Uint8Array(buf.slice(0)), fileName: name });
+  await tmp.initialized;
+  const stride = Math.max(1, Math.floor((tmp.numSplats || 1) / MAX_SAMPLES));
+  tmp.forEachSplat((i, c, sc, q, op) => { if (i % stride === 0 && op >= .3) out.push(c.x, c.y, c.z); });
+  tmp.dispose?.();
+  return { pts: new Float32Array(out), stride };
+}
+
+// samples in the scan's own frame (after the flip), and the centre they are hung from (the median, so the
+// dome of far background splats that Scaniverse adds around every capture does not pull it away)
+function prepareLocal(scan) {
+  const q = scan.splat.quaternion, v = new THREE.Vector3(), raw = scan.raw, loc = new Float32Array(raw.length);
+  for (let i = 0; i < raw.length; i += 3) {
+    v.set(raw[i], raw[i + 1], raw[i + 2]).applyQuaternion(q);
+    loc[i] = v.x; loc[i + 1] = v.y; loc[i + 2] = v.z;
+  }
+  scan.all = loc;
+  const every = 3 * Math.max(1, Math.floor(loc.length / 3 / 20000));
+  const med = k => { const a = []; for (let i = k; i < loc.length; i += every) a.push(loc[i]); a.sort((x, y) => x - y); return a[a.length >> 1] ?? 0; };
+  scan.mid = new THREE.Vector3(med(0), med(1), med(2));
+  const r = []; for (let i = 0; i < loc.length; i += every) r.push(Math.hypot(loc[i] - scan.mid.x, loc[i + 1] - scan.mid.y, loc[i + 2] - scan.mid.z));
+  r.sort((a, b) => a - b);
+  // the capture itself sits within about twice the median distance; the dome is a shell much farther out
+  scan.autoCrop = THREE.MathUtils.clamp(2 * (r[r.length >> 1] || 5), 6, 30);
+  scan.inner.position.copy(scan.mid).negate();
+  applyCrop(scan);
+}
+
+// crop: a sphere around the centre; outside it nothing is drawn, picked or counted. 0 = no crop
+const NO_CROP = 1e6;
+function applyCrop(scan) {
+  const R = scan.crop === 0 ? NO_CROP : (scan.crop ?? scan.autoCrop), loc = scan.all, m = scan.mid, R2 = R * R;
+  const keep = [];
+  for (let i = 0; i < loc.length; i += 3) {
+    const dx = loc[i] - m.x, dy = loc[i + 1] - m.y, dz = loc[i + 2] - m.z;
+    if (dx * dx + dy * dy + dz * dz <= R2) keep.push(loc[i], loc[i + 1], loc[i + 2]);
+  }
+  scan.local = new Float32Array(keep);
+  // extent from percentiles, so loose floaters do not count
+  const L = scan.local, every = 3 * Math.max(1, Math.floor(L.length / 3 / 20000));
+  const axis = k => { const a = []; for (let i = k; i < L.length; i += every) a.push(L[i]); return a.sort((x, y) => x - y); };
+  const pc = (a, p) => a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : 0;
+  const ax = axis(0), ay = axis(1), az = axis(2);
+  scan.core = new THREE.Box3(new THREE.Vector3(pc(ax, .02), pc(ay, .02), pc(az, .02)), new THREE.Vector3(pc(ax, .98), pc(ay, .98), pc(az, .98)));
+  if (!scan.cropSdf) {
+    const edit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.MULTIPLY, softEdge: .5 });
+    scan.cropSdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, invert: true, opacity: 0 });
+    edit.add(scan.cropSdf); scan.splat.add(edit);
+  }
+  // the sphere lives under the splat, in the file's own (unflipped) frame
+  scan.cropSdf.position.copy(m).applyQuaternion(scan.splat.quaternion.clone().invert());
+  scan.cropSdf.radius = R;
+  scan.root.updateMatrixWorld(true);
+  scan.worldVersion = -1;
+}
+
+let worldVersion = 0; // bumped whenever any scan moves
+function worldSamples(scan) {
+  if (scan.worldVersion === worldVersion && scan.world) return scan.world;
+  scan.root.updateMatrixWorld(true);
+  const m = scan.inner.matrixWorld.elements, loc = scan.local, w = scan.world && scan.world.length === loc.length ? scan.world : new Float32Array(loc.length);
+  for (let i = 0; i < loc.length; i += 3) {
+    const x = loc[i], y = loc[i + 1], z = loc[i + 2];
+    w[i] = m[0] * x + m[4] * y + m[8] * z + m[12];
+    w[i + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+    w[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+  }
+  scan.world = w; scan.worldVersion = worldVersion;
+  return w;
+}
+function worldBox(scan) {
+  scan.root.updateMatrixWorld(true);
+  return scan.core.clone().applyMatrix4(scan.inner.matrixWorld);
+}
+function sitesBox(list = scans.filter(s => s.visible)) {
+  const b = new THREE.Box3(); list.forEach(s => b.union(worldBox(s))); return b;
+}
+
+async function loadScan(file, name) {
+  const buf = await file.arrayBuffer();
+  status(`Reading ${name} (${(file.size / 1e6).toFixed(0)} MB)…`);
+  const { pts, stride } = await splatSamples(name, buf);
+  status(`Building detail levels for ${name}…`);
+  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true });
+  await splat.initialized;
+  splat.quaternion.set(1, 0, 0, 0); // most 3DGS captures come in OpenCV convention (y down): flip to y up
+  const root = new THREE.Group(), inner = new THREE.Group();
+  inner.add(splat); root.add(inner); scene.add(root);
+  const used = new Set(scans.map(s => s.color));
+  const color = PALETTE.find(c => !used.has(c)) || PALETTE[scans.length % PALETTE.length];
+  const scan = { name, file, size: file.size, root, inner, splat, raw: pts, stride, total: splat.numSplats || Math.round(pts.length / 3 * stride),
+    color, visible: true, flipped: false, far: false, hidden: false };
+  prepareLocal(scan);
+  return scan;
+}
+
+function addScan(scan) {
+  const saved = pendingLayout.get(scan.name) || storedLayout()[scan.name];
+  if (saved) applyPlacement(scan, saved);
+  else {
+    // new scan with no known place: next to the others, standing on the ground, so it can be dragged in
+    const b = sitesBox(scans);
+    const s = scan.core.getSize(new THREE.Vector3());
+    const x = b.isEmpty() ? 0 : b.max.x + 2 + s.x / 2;
+    const z = b.isEmpty() ? 0 : (b.min.z + b.max.z) / 2;
+    scan.root.position.set(x, s.y / 2, z);
+  }
+  pendingLayout.delete(scan.name);
+  scans.push(scan);
+  moved(false);
+  applyTint(scan);
+  renderList();
+  // the first scan gives the sky, unless a saved alignment named another one (or none)
+  if (wantSky === null ? !sky.name && !sky.loading : wantSky === scan.name) setSky(scan.name);
+}
+
+function removeScan(scan) {
+  if (aligning && aligning.scan === scan) endAlign();
+  const i = scans.indexOf(scan); if (i < 0) return;
+  scans.splice(i, 1);
+  scene.remove(scan.root);
+  if (sky.name === scan.name) setSky('');
+  scan.splat.dispose?.();
+  if (selected === scan) select(null);
+  moved(false); renderList();
+  if (!scans.length) { $('#empty').classList.remove('hidden'); document.body.classList.remove('has-scans'); }
+}
+
+// ---------- placement: save / restore ----------
+const STORE = 'siteViewer.layout';
+function placement(scan) {
+  const r = scan.root;
+  return { position: r.position.toArray().map(v => +v.toFixed(4)), quaternion: r.quaternion.toArray().map(v => +v.toFixed(6)),
+    scale: +r.scale.x.toFixed(5), crop: scan.crop ?? null, flipped: scan.flipped, color: scan.color, visible: scan.visible };
+}
+function applyPlacement(scan, p) {
+  if (p.flipped !== undefined && p.flipped !== scan.flipped) setFlip(scan, p.flipped);
+  if (p.crop !== undefined && p.crop !== scan.crop) { scan.crop = p.crop ?? undefined; applyCrop(scan); }
+  if (p.position) scan.root.position.fromArray(p.position);
+  if (p.quaternion) scan.root.quaternion.fromArray(p.quaternion);
+  if (p.scale) scan.root.scale.setScalar(p.scale);
+  if (p.color) scan.color = p.color;
+  if (p.visible !== undefined) scan.visible = p.visible;
+  scan.root.updateMatrixWorld(true);
+}
+function storedLayout() { try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch { return {}; } }
+let storeTimer;
+function remember() {
+  clearTimeout(storeTimer);
+  storeTimer = setTimeout(() => {
+    try { const all = storedLayout(); scans.forEach(s => all[s.name] = placement(s)); localStorage.setItem(STORE, JSON.stringify(all)); } catch {}
+  }, 400);
+}
+const pendingLayout = new Map(); // from a dropped .json, for scans that are not loaded yet
+function readLayout(json) {
+  const list = Array.isArray(json?.scans) ? json.scans : [];
+  let now = 0;
+  for (const p of list) {
+    if (!p?.name) continue;
+    const scan = scans.find(s => s.name === p.name);
+    if (scan) { pushUndo(scan); applyPlacement(scan, p); now++; } else pendingLayout.set(p.name, p);
+  }
+  if (json && 'sky' in json) { wantSky = json.sky || ''; if (!wantSky || scans.some(s => s.name === wantSky)) setSky(wantSky); }
+  if (json?.camera?.position) { camera.position.fromArray(json.camera.position); if (json.camera.look) { setLook(new THREE.Vector3().fromArray(json.camera.look)); applyCam(); } }
+  moved(); renderList(); scans.forEach(applyTint);
+  const later = list.length - now;
+  flash(`Alignment loaded: ${now} scan${now === 1 ? '' : 's'} placed` + (later ? `, ${later} more will be placed when you drop ${later === 1 ? 'its file' : 'their files'}.` : '.'), 6000);
+}
+function saveLayout() {
+  const data = { app: 'gaussian_exhibition/site_viewer', version: 1, saved: new Date().toISOString(),
+    note: 'position = centre of each scan in metres (y up); quaternion x,y,z,w; flipped = turned upside down after loading',
+    camera: { position: camera.position.toArray().map(v => +v.toFixed(3)), look: lookDir().toArray().map(v => +v.toFixed(4)) },
+    sky: sky.name || null,
+    scans: scans.map(s => ({ name: s.name, size: s.size, splats: s.total, ...placement(s) })) };
+  const text = JSON.stringify(data, null, 1);
+  // published on claude.ai, the page may only hand out files through the viewer's downloads capability
+  if (downloads) {
+    downloads.save({ filename: 'site_alignment.json', data: text })
+      .then(() => {}, err => { if (err?.code !== 'declined') flash('Could not save: ' + (err?.message || err?.code || err)); });
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = 'site_alignment.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+let downloads = null;
+window.claude?.use?.('downloads').then(d => { downloads = d; }, () => {});
+
+// ---------- files ----------
+// The Finder and Scaniverse number repeated exports "Bad Zurzach.spz 2", "Bad Zurzach.spz 3", …:
+// read those as "Bad Zurzach 2.spz". Files without a known ending are recognised by their first bytes.
+async function scanName(f) {
+  const m = f.name.match(/^(.*)\.(ply|spz|splat|ksplat)(?:\s+(\d+))?$/i);
+  if (m) return `${m[1]}${m[3] ? ' ' + m[3] : ''}.${m[2].toLowerCase()}`;
+  if (/\.(json|zip)$/i.test(f.name)) return null;
+  const head = new Uint8Array(await f.slice(0, 4).arrayBuffer());
+  if (head[0] === 0x1f && head[1] === 0x8b) return f.name + '.spz'; // gzip: what Scaniverse writes as .spz
+  if (String.fromCharCode(...head.slice(0, 3)) === 'ply') return f.name + '.ply';
+  return null;
+}
+let loading = Promise.resolve();
+function handleFiles(fileList) {
+  const files = [...fileList];
+  loading = loading.then(async () => {
+    for (const f of files.filter(f => ext(f.name) === 'json')) {
+      try { readLayout(JSON.parse(await f.text())); } catch (err) { flash(`${f.name} is not a saved alignment.`); }
+    }
+    const named = await Promise.all(files.map(async f => ({ f, name: await scanName(f) })));
+    const mains = named.filter(x => x.name);
+    if (!mains.length) { if (!files.some(f => ext(f.name) === 'json')) flash('No scans in the drop (.ply .spz .splat .ksplat).'); return; }
+    $('#empty').classList.add('hidden');
+    document.body.classList.add('has-scans');
+    $('#scans').classList.remove('hidden');
+    const first = !scans.length;
+    for (let i = 0; i < mains.length; i++) {
+      const { f } = mains[i];
+      let name = mains[i].name;
+      if (scans.some(s => s.name === name && s.size === f.size)) continue;
+      // same name, different file: keep both apart (their alignment is remembered by name)
+      for (let k = 2; scans.some(s => s.name === name); k++) name = mains[i].name.replace(/(\.[^.]+)$/, ` (${k})$1`);
+      try {
+        status(`Loading ${i + 1}/${mains.length}: ${name}`);
+        addScan(await loadScan(f, name));
+        if (first && scans.length === 1) overview(true);
+      } catch (err) {
+        console.error(f.name, err);
+        failed.push(name); renderList();
+      }
+    }
+    status('');
+    if (first) overview();
+    if (coverage.on) scheduleCoverage();
+  });
+}
+const failed = [];
+window.siteFiles.handler = handleFiles;
+window.siteFiles.queue.splice(0).forEach(handleFiles);
+$('#pick').onclick = $('#bAdd').onclick = () => $('#file').click();
+$('#file').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
+
+// ---------- list ----------
+function renderList() {
+  const ol = $('#scans ol'); ol.innerHTML = '';
+  for (const s of scans) {
+    const li = document.createElement('li');
+    li.className = (s === selected ? 'sel ' : '') + (s.visible ? '' : 'off');
+    li.innerHTML = `<input type="checkbox" ${s.visible ? 'checked' : ''} title="show / hide (V)"><span class="sw"></span><span class="nm"></span><span class="k"></span>`;
+    li.querySelector('.sw').style.background = s.color;
+    li.querySelector('.nm').textContent = s.name.replace(/\.[^.]+$/, '');
+    li.querySelector('.k').textContent = fmtN(s.total) + (s.far ? ' · far' : '');
+    li.title = `${s.name} · ${(s.size / 1e6).toFixed(0)} MB · ${s.total.toLocaleString()} splats`;
+    li.querySelector('input').onclick = e => { e.stopPropagation(); setVisible(s, e.target.checked); };
+    li.onclick = () => select(s);
+    li.ondblclick = () => { select(s); flyTo(s); };
+    ol.append(li);
+  }
+  for (const n of failed) {
+    const li = document.createElement('li'); li.className = 'err';
+    li.innerHTML = '<span class="sw"></span><span class="nm"></span><span class="k">could not load</span>';
+    li.querySelector('.nm').textContent = n; ol.append(li);
+  }
+  renderSkyOptions();
+  $('#scanCount').textContent = scans.length ? `· ${scans.length} · ${fmtN(scans.reduce((a, s) => a + s.total, 0))} splats` : '';
+}
+function setVisible(s, v) { s.visible = v; moved(false); renderList(); remember(); }
+$('#scans .fold').onclick = () => $('#scans').classList.toggle('folded');
+$('#detail .fold').onclick = () => $('#detail').classList.toggle('folded');
+
+// ---------- selection + transform ----------
+const tc = new TransformControls(camera, dom);
+tc.setSize(.9);
+scene.add(tc.getHelper());
+tc.addEventListener('dragging-changed', e => { if (e.value && selected) pushUndo(selected); if (!e.value) remember(); });
+tc.addEventListener('objectChange', () => moved());
+let gizmo = 'translate';
+function setGizmo(mode) {
+  gizmo = mode;
+  tc.setMode(mode);
+  // scans from a phone are level already: turning is only around the vertical
+  tc.showX = tc.showZ = mode === 'translate'; tc.showY = true;
+  $('#gMove').classList.toggle('on', mode === 'translate'); $('#gTurn').classList.toggle('on', mode === 'rotate');
+}
+setGizmo('translate');
+
+const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xffffff);
+selBox.visible = false; scene.add(selBox);
+
+function select(s) {
+  selected = s;
+  if (s) { tc.attach(s.root); $('#sel').classList.remove('hidden'); $('#selName').textContent = s.name.replace(/\.[^.]+$/, ''); $('#selName').style.color = s.color; }
+  else { tc.detach(); $('#sel').classList.add('hidden'); }
+  updateSelBox(); fillFields(); renderList();
+}
+function updateSelBox() {
+  if (!selected || !selected.visible) { selBox.visible = false; return; }
+  selected.root.updateMatrixWorld(true);
+  selBox.box.copy(selected.core); selBox.matrix.copy(selected.inner.matrixWorld); selBox.matrixAutoUpdate = false;
+  selBox.material.color.set(selected.color); selBox.visible = true;
+  // Box3Helper places itself from its box; put it in the scan's frame so it turns with the scan
+  selBox.updateMatrixWorld = function () { this.matrixWorld.copy(this.matrix).multiply(new THREE.Matrix4().compose(
+    this.box.getCenter(new THREE.Vector3()), new THREE.Quaternion(), this.box.getSize(new THREE.Vector3()).multiplyScalar(.5))); };
+}
+
+const F = ['px', 'py', 'pz', 'ry', 'rx', 'rz', 'sc'];
+function fillFields() {
+  if (!selected) return;
+  const r = selected.root, e = new THREE.Euler().setFromQuaternion(r.quaternion, 'YXZ');
+  const vals = { px: r.position.x, py: r.position.y, pz: r.position.z, ry: e.y / DEG, rx: e.x / DEG, rz: e.z / DEG, sc: r.scale.x };
+  for (const k of F) { const el = $('#' + k); if (document.activeElement !== el) el.value = +vals[k].toFixed(k === 'sc' ? 4 : k[0] === 'r' ? 2 : 3); }
+  if (document.activeElement !== $('#cr')) $('#cr').value = +(selected.crop ?? selected.autoCrop).toFixed(1);
+  $('#bCropAuto').disabled = selected.crop === undefined;
+}
+$('#cr').addEventListener('input', () => {
+  const v = parseFloat($('#cr').value);
+  if (!selected || !isFinite(v) || v < 0) return;
+  selected.crop = v; applyCrop(selected); moved();
+});
+$('#bCropAuto').onclick = () => { if (!selected) return; selected.crop = undefined; applyCrop(selected); moved(); };
+for (const k of F) {
+  $('#' + k).addEventListener('focus', () => selected && pushUndo(selected));
+  $('#' + k).addEventListener('input', () => {
+    if (!selected) return;
+    const v = Object.fromEntries(F.map(k => [k, parseFloat($('#' + k).value)]));
+    if (F.some(k => !isFinite(v[k]))) return;
+    const r = selected.root;
+    r.position.set(v.px, v.py, v.pz);
+    r.quaternion.setFromEuler(new THREE.Euler(v.rx * DEG, v.ry * DEG, v.rz * DEG, 'YXZ'));
+    r.scale.setScalar(Math.max(.01, v.sc));
+    moved(); remember();
+  });
+}
+$('#gMove').onclick = () => setGizmo('translate');
+$('#gTurn').onclick = () => setGizmo('rotate');
+$('#bLevel').onclick = () => { if (!selected) return; pushUndo(selected); const e = new THREE.Euler().setFromQuaternion(selected.root.quaternion, 'YXZ'); selected.root.quaternion.setFromEuler(new THREE.Euler(0, e.y, 0, 'YXZ')); moved(); remember(); };
+$('#bFlip').onclick = () => { if (!selected) return; setFlip(selected, !selected.flipped); moved(); remember(); };
+$('#bGround').onclick = () => selected && putOnGround(selected);
+$('#bFly').onclick = () => selected && flyTo(selected);
+$('#bRemove').onclick = () => selected && removeScan(selected);
+
+function setFlip(scan, flipped) {
+  scan.flipped = flipped;
+  scan.splat.quaternion.set(flipped ? 0 : 1, 0, 0, flipped ? 1 : 0);
+  prepareLocal(scan);
+}
+function putOnGround(scan) {
+  pushUndo(scan);
+  const w = worldSamples(scan), ys = [];
+  for (let i = 1; i < w.length; i += 3 * Math.max(1, Math.floor(w.length / 3 / 20000))) ys.push(w[i]);
+  ys.sort((a, b) => a - b);
+  scan.root.position.y -= ys[Math.floor(ys.length * .02)] || 0;
+  moved(); remember();
+}
+
+// something moved: samples, box, fields, coverage follow
+function moved(dirty = true) {
+  worldVersion++;
+  for (const s of scans) { s.root.visible = s.visible && !s.hidden; }
+  updateSelBox(); fillFields();
+  if (dirty) remember();
+  if (coverage.on) scheduleCoverage();
+}
+
+// ---------- undo ----------
+const undo = [];
+function pushUndo(scan) { undo.push({ scan, m: scan.root.matrix.clone(), flipped: scan.flipped }); if (undo.length > 200) undo.shift(); }
+function popUndo() {
+  const u = undo.pop(); if (!u || !scans.includes(u.scan)) return;
+  if (u.flipped !== u.scan.flipped) setFlip(u.scan, u.flipped);
+  u.scan.root.matrix.copy(u.m).decompose(u.scan.root.position, u.scan.root.quaternion, u.scan.root.scale);
+  moved(); remember();
+}
+
+// ---------- colours ----------
+let tint = false;
+function applyTint(s) { s.splat.recolor = tint ? new THREE.Color(s.color).lerp(new THREE.Color(1, 1, 1), .35) : new THREE.Color(1, 1, 1); }
+// grid: drawn opaque, so it would cut through the sky; hidden under the coverage map anyway
+let gridOn = true;
+function showGrid() { grid.visible = gridOn && !coverage.on; $('#bGrid').classList.toggle('on', gridOn); }
+$('#bGrid').onclick = () => { gridOn = !gridOn; showGrid(); };
+function toggleTint() { tint = !tint; scans.forEach(applyTint); $('#bTint').classList.toggle('on', tint); }
+$('#bTint').onclick = toggleTint;
+
+// ---------- picking (on the sampled splat centres) ----------
+const PICK_PX = 7;
+function rayFrom(x, y) {
+  const r = dom.getBoundingClientRect();
+  const ndc = new THREE.Vector2((x - r.left) / r.width * 2 - 1, -(y - r.top) / r.height * 2 + 1);
+  const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, camera);
+  return ray.ray;
+}
+function pick(x, y, filter = () => true) {
+  const ray = rayFrom(x, y), o = ray.origin, d = ray.direction;
+  const tanPx = PICK_PX * 2 * Math.tan(camera.fov / 2 * DEG) / dom.clientHeight;
+  let best = null, bestT = Infinity;
+  for (const s of scans) {
+    if (!s.visible || s.hidden || !filter(s)) continue;
+    const w = worldSamples(s);
+    for (let i = 0; i < w.length; i += 3) {
+      const px = w[i] - o.x, py = w[i + 1] - o.y, pz = w[i + 2] - o.z;
+      const t = px * d.x + py * d.y + pz * d.z;
+      if (t <= camera.near || t >= bestT) continue;
+      const r = t * tanPx, perp2 = px * px + py * py + pz * pz - t * t;
+      if (perp2 < r * r) { bestT = t; best = { scan: s, i }; }
+    }
+  }
+  if (!best) return null;
+  const w = best.scan.world;
+  return { scan: best.scan, point: new THREE.Vector3(w[best.i], w[best.i + 1], w[best.i + 2]), t: bestT };
+}
+
+// ---------- camera ----------
+let yaw = 0, pitch = -.4, speed = 5, speedMul = 1, tween = null;
+const keys = new Set();
+function lookDir() { return new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)); }
+function setLook(dir) { dir = dir.clone().normalize(); pitch = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)); yaw = Math.atan2(-dir.x, -dir.z); }
+function applyCam() { camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')); }
+function animateTo(pos, target, up = new THREE.Vector3(0, 1, 0)) {
+  const m = new THREE.Matrix4().lookAt(pos, target, up);
+  tween = { t: 0, fromPos: camera.position.clone(), pos, fromQ: camera.quaternion.clone(), toQ: new THREE.Quaternion().setFromRotationMatrix(m), target };
+}
+function frame(box, instant) {
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  const r = Math.max(s.x, s.z, s.y * 2) / Math.min(camera.aspect, 1);
+  const pos = new THREE.Vector3(c.x, c.y + r * .7, c.z + r * .9);
+  speed = Math.max(r / 10, 1);
+  if (instant) { camera.position.copy(pos); setLook(c.clone().sub(pos)); applyCam(); } else animateTo(pos, c);
+}
+function overview(instant) { frame(sitesBox(), instant); }
+function topView() {
+  const b = sitesBox(); if (b.isEmpty()) return;
+  const c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+  const span = Math.max(s.x / camera.aspect, s.z) * 1.15;
+  const h = span / 2 / Math.tan(camera.fov / 2 * DEG) + b.max.y - c.y;
+  // pitch just short of -90°, so yaw (north up = -z) stays defined
+  animateTo(new THREE.Vector3(c.x, c.y + h, c.z + h * .002), c, new THREE.Vector3(0, 0, -1));
+  speed = Math.max(span / 10, 1);
+}
+function flyTo(s) { frame(worldBox(s)); }
+function flyToPoint(p) {
+  const dist = Math.max(2, camera.position.distanceTo(p) * .35);
+  const pos = p.clone().addScaledVector(lookDir(), -dist);
+  animateTo(pos, p); speed = Math.max(dist / 3, .5);
+}
+$('#bAll').onclick = () => overview();
+$('#bTop').onclick = topView;
+
+// mouse: left-drag orbits around the grabbed point, right-drag turns the camera, middle / shift-drag pans
+// touch: one finger orbits, two fingers pinch (move in / out) and slide (pan)
+const pointers = new Map();
+let drag = null, lastClick = 0;
+dom.addEventListener('contextmenu', e => e.preventDefault());
+dom.addEventListener('pointerdown', e => {
+  if (tc.dragging || tc.axis !== null) return; // the gizmo has it
+  try { dom.setPointerCapture(e.pointerId); } catch {}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  tween = null;
+  if (pointers.size === 2) { drag = { mode: 'pinch', ...pinchState() }; return; }
+  const mode = e.button === 2 ? 'look' : (e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
+  let pivot = null;
+  if (mode !== 'look') {
+    const hit = pick(e.clientX, e.clientY);
+    pivot = hit ? hit.point : camera.position.clone().addScaledVector(rayFrom(e.clientX, e.clientY).direction, Math.max(speed * 2, 3));
+  }
+  drag = { mode, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), pivot, button: e.button };
+});
+function pinchState() {
+  const [a, b] = [...pointers.values()];
+  return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+}
+dom.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) { hoverInfo(e); return; }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!drag) return;
+  if (drag.mode === 'pinch' && pointers.size === 2) {
+    const p = pinchState(), f = p.d / Math.max(drag.d, 1);
+    camera.position.addScaledVector(lookDir(), (f - 1) * speed * 4);
+    panBy(p.mx - drag.mx, p.my - drag.my, speed * 4);
+    Object.assign(drag, p); return;
+  }
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.mode === 'look') { yaw -= dx * .004; pitch = THREE.MathUtils.clamp(pitch - dy * .004, -1.55, 1.55); applyCam(); }
+  else if (drag.mode === 'pan') panBy(dx, dy, camera.position.distanceTo(drag.pivot));
+  else if (drag.mode === 'orbit') orbit(dx, dy, drag.pivot);
+});
+function panBy(dx, dy, dist) {
+  const k = dist * 2 * Math.tan(camera.fov / 2 * DEG) / dom.clientHeight;
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion), up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  camera.position.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+}
+function orbit(dx, dy, pivot) {
+  const dYaw = -dx * .005;
+  let dPitch = -dy * .005;
+  dPitch = THREE.MathUtils.clamp(pitch + dPitch, -1.55, 1.55) - pitch;
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dYaw)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(right, dPitch));
+  const off = camera.position.clone().sub(pivot).applyQuaternion(q);
+  camera.position.copy(pivot).add(off);
+  yaw += dYaw; pitch += dPitch; applyCam();
+}
+function pointerEnd(e) {
+  pointers.delete(e.pointerId);
+  if (!drag) return;
+  const click = drag.mode !== 'pinch' && drag.button === 0 && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 5 && performance.now() - drag.t0 < 500;
+  if (pointers.size === 0) drag = null;
+  if (!click) return;
+  const now = performance.now();
+  if (now - lastClick < 350) { lastClick = 0; const hit = pick(e.clientX, e.clientY); if (hit) flyToPoint(hit.point); return; }
+  lastClick = now;
+  onClick(e.clientX, e.clientY);
+}
+dom.addEventListener('pointerup', pointerEnd);
+dom.addEventListener('pointercancel', pointerEnd);
+let wheelPick = null; // one pick per gesture, not per wheel event
+dom.addEventListener('wheel', e => {
+  e.preventDefault(); tween = null;
+  const now = performance.now();
+  if (!wheelPick || now - wheelPick.time > 200 || Math.hypot(e.clientX - wheelPick.x, e.clientY - wheelPick.y) > 4)
+    wheelPick = { hit: pick(e.clientX, e.clientY), x: e.clientX, y: e.clientY, time: now };
+  else wheelPick.time = now;
+  const hit = wheelPick.hit && { t: wheelPick.hit.point.distanceTo(camera.position) };
+  const dir = rayFrom(e.clientX, e.clientY).direction;
+  const dist = hit ? hit.t : speed * 4;
+  const step = THREE.MathUtils.clamp(-e.deltaY, -200, 200) / 100 * dist * .15;
+  camera.position.addScaledVector(dir, Math.min(step, dist * .8));
+}, { passive: false });
+
+function onClick(x, y) {
+  if (aligning) return alignClick(x, y);
+  const hit = pick(x, y);
+  select(hit ? hit.scan : null);
+}
+
+// ---------- keys ----------
+const speedOut = () => flash(`Speed ×${+speedMul.toPrecision(2)}`, 1200);
+addEventListener('keydown', e => {
+  if (e.target.closest?.('input, select, textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
+  const k = e.key.toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && k === 'z') { e.preventDefault(); popUndo(); return; }
+  if (e.metaKey || e.ctrlKey) return;
+  keys.add(k); if (e.shiftKey) keys.add('shift');
+  const s = selected;
+  const nudge = e.shiftKey ? .5 : e.altKey ? .01 : .05;
+  const mv = v => { if (!s) return; e.preventDefault(); if (!e.repeat) pushUndo(s); s.root.position.add(v); moved(); };
+  const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  switch (e.key) {
+    case 'ArrowUp': return mv(fwd.multiplyScalar(nudge));
+    case 'ArrowDown': return mv(fwd.multiplyScalar(-nudge));
+    case 'ArrowLeft': return mv(right.multiplyScalar(-nudge));
+    case 'ArrowRight': return mv(right.multiplyScalar(nudge));
+    case 'PageUp': return mv(new THREE.Vector3(0, nudge, 0));
+    case 'PageDown': return mv(new THREE.Vector3(0, -nudge, 0));
+    case ',': case '<': case '.': case '>': {
+      if (!s) return; if (!e.repeat) pushUndo(s);
+      const a = (k === ',' || k === '<' ? 1 : -1) * (e.shiftKey ? 5 : .5) * DEG;
+      s.root.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a)); moved(); return;
+    }
+    case 'Escape': if (aligning) endAlign(); else select(null); return;
+    case 'Delete': case 'Backspace': if (s) removeScan(s); return;
+  }
+  switch (k) {
+    case '1': speedMul /= 1.5; speedOut(); break;
+    case '2': speedMul *= 1.5; speedOut(); break;
+    case 'o': overview(); break;
+    case 't': topView(); break;
+    case 'c': toggleCoverage(); break;
+    case 'k': toggleTint(); break;
+    case 'b': theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); break;
+    case 'h': case '?': $('#help').classList.toggle('show'); break;
+    case 'm': setGizmo('translate'); break;
+    case 'r': setGizmo('rotate'); break;
+    case 'f': if (s) $('#bFlip').click(); break;
+    case 'g': if (e.shiftKey) $('#bGrid').click(); else if (s) putOnGround(s); break;
+    case 'v': if (s) setVisible(s, !s.visible); break;
+    case 'n': case 'p': if (scans.length) { const i = s ? scans.indexOf(s) : -1; const n = scans[(i + (k === 'n' ? 1 : -1) + scans.length) % scans.length]; select(n); flyTo(n); } break;
+  }
+});
+addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (!e.shiftKey) keys.delete('shift'); });
+addEventListener('blur', () => keys.clear());
+$('#bHelp').onclick = () => $('#help').classList.toggle('show');
+$('#bTheme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); };
+$('#bSave').onclick = saveLayout;
+
+// ---------- align by point pairs ----------
+// Click a spot on the scan being moved, then the same spot on any other scan; repeat.
+// Level (default): turn around the vertical + move, 1 pair = move only, 2+ pairs = turn too.
+// Not level: full rotation from 3+ pairs (Horn's quaternion method). Scale optional.
+let aligning = null;
+const markGeo = new THREE.BufferGeometry(), lineGeo = new THREE.BufferGeometry();
+const markA = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 11, sizeAttenuation: false, color: 0xd9442b, depthTest: false }));
+const markB = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 11, sizeAttenuation: false, color: 0xffffff, depthTest: false }));
+const links = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false }));
+for (const o of [markA, markB, links]) { o.renderOrder = 999; o.frustumCulled = false; scene.add(o); }
+
+function startAlign() {
+  if (!selected) return;
+  if (scans.filter(s => s.visible).length < 2) { flash('Show at least two scans to align one to another.'); return; }
+  aligning = { scan: selected, pairs: [], a: null };
+  // local copy of each picked point on the moving scan, so they follow it when it moves
+  $('#align').classList.remove('hidden'); $('#alMoving').textContent = selected.name.replace(/\.[^.]+$/, '');
+  $('#alMoving').style.color = selected.color; $('#bAlign').classList.add('on');
+  tc.detach();
+  renderAlign();
+}
+function endAlign() {
+  aligning = null;
+  $('#align').classList.add('hidden'); $('#bAlign').classList.remove('on');
+  if (selected) tc.attach(selected.root);
+  drawMarks();
+}
+function alignClick(x, y) {
+  const al = aligning, mov = al.scan;
+  if (!al.a) {
+    const hit = pick(x, y, s => s === mov);
+    if (!hit) return flash(`Click on ${mov.name.replace(/\.[^.]+$/, '')} (the scan you are moving).`);
+    al.a = mov.inner.worldToLocal(hit.point.clone());
+  } else {
+    const hit = pick(x, y, s => s !== mov);
+    if (!hit) return flash('Now click the same spot on another scan.');
+    al.pairs.push({ a: al.a, b: hit.point, ref: hit.scan }); al.a = null;
+  }
+  renderAlign();
+}
+function pairWorld(p) { mov().root.updateMatrixWorld(true); return { a: mov().inner.localToWorld(p.a.clone()), b: p.b }; }
+const mov = () => aligning.scan;
+function renderAlign() {
+  const al = aligning; if (!al) return;
+  const level = $('#alLevel').checked, need = level ? 1 : 3;
+  const n = al.pairs.length;
+  $('#alStep').textContent = al.a ? `Point ${n + 1}: now the same spot on another scan` : `Point ${n + 1}: click a sharp spot on this scan (a corner, a post, a window edge)`;
+  const ol = $('#alPairs'); ol.innerHTML = '';
+  al.pairs.forEach(p => {
+    const w = pairWorld(p), li = document.createElement('li');
+    li.textContent = `↔ ${p.ref.name.replace(/\.[^.]+$/, '')} · ${(w.a.distanceTo(w.b) * 100).toFixed(0)} cm apart`;
+    ol.append(li);
+  });
+  $('#alApply').disabled = n < need;
+  $('#alNote').textContent = n < need ? (level ? '1 pair moves the scan, 2 or more also turn it. Spread them out.' : 'Without “keep level”: at least 3 pairs, not in one line.') :
+    `${n} pair${n === 1 ? '' : 's'}${level && n === 1 ? ': moves only, add another pair to turn as well' : ''}.`;
+  drawMarks();
+}
+function drawMarks() {
+  const A = [], B = [], L = [];
+  if (aligning) {
+    for (const p of aligning.pairs) { const w = pairWorld(p); A.push(...w.a.toArray()); B.push(...w.b.toArray()); L.push(...w.a.toArray(), ...w.b.toArray()); }
+    if (aligning.a) { mov().root.updateMatrixWorld(true); A.push(...mov().inner.localToWorld(aligning.a.clone()).toArray()); }
+  }
+  markA.geometry.setAttribute('position', new THREE.Float32BufferAttribute(A, 3));
+  markB.geometry.setAttribute('position', new THREE.Float32BufferAttribute(B, 3));
+  links.geometry.setAttribute('position', new THREE.Float32BufferAttribute(L, 3));
+}
+function solve(pairs, level, withScale) {
+  const W = pairs.map(pairWorld), n = W.length;
+  const ca = new THREE.Vector3(), cb = new THREE.Vector3();
+  W.forEach(w => { ca.add(w.a); cb.add(w.b); }); ca.divideScalar(n); cb.divideScalar(n);
+  const A = W.map(w => w.a.clone().sub(ca)), B = W.map(w => w.b.clone().sub(cb));
+  let q = new THREE.Quaternion();
+  if (level) {
+    if (n >= 2) {
+      // best turn around y: b ≈ Ry(θ)·a, with Ry: x' = x cosθ + z sinθ, z' = −x sinθ + z cosθ
+      let sc = 0, ss = 0;
+      for (let i = 0; i < n; i++) { sc += B[i].x * A[i].x + B[i].z * A[i].z; ss += B[i].x * A[i].z - B[i].z * A[i].x; }
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(ss, sc));
+    }
+  } else q = hornRotation(A, B);
+  let s = 1;
+  if (withScale && n >= 2) {
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) { const ra = A[i].clone().applyQuaternion(q); num += B[i].dot(ra); den += A[i].lengthSq(); }
+    if (den > 1e-9 && num > 0) s = num / den;
+  }
+  // T(x) = s·R·(x − ca) + cb
+  const T = new THREE.Matrix4().makeTranslation(cb.x, cb.y, cb.z)
+    .multiply(new THREE.Matrix4().makeRotationFromQuaternion(q))
+    .multiply(new THREE.Matrix4().makeScale(s, s, s))
+    .multiply(new THREE.Matrix4().makeTranslation(-ca.x, -ca.y, -ca.z));
+  return T;
+}
+// rotation that best maps points A onto B (both centred): largest eigenvector of Horn's 4×4 matrix
+function hornRotation(A, B) {
+  let Sxx = 0, Sxy = 0, Sxz = 0, Syx = 0, Syy = 0, Syz = 0, Szx = 0, Szy = 0, Szz = 0;
+  for (let i = 0; i < A.length; i++) {
+    const a = A[i], b = B[i];
+    Sxx += a.x * b.x; Sxy += a.x * b.y; Sxz += a.x * b.z;
+    Syx += a.y * b.x; Syy += a.y * b.y; Syz += a.y * b.z;
+    Szx += a.z * b.x; Szy += a.z * b.y; Szz += a.z * b.z;
+  }
+  const N = [
+    [Sxx + Syy + Szz, Syz - Szy, Szx - Sxz, Sxy - Syx],
+    [Syz - Szy, Sxx - Syy - Szz, Sxy + Syx, Szx + Sxz],
+    [Szx - Sxz, Sxy + Syx, -Sxx + Syy - Szz, Syz + Szy],
+    [Sxy - Syx, Szx + Sxz, Syz + Szy, -Sxx - Syy + Szz]];
+  const { vec } = jacobiMax(N);
+  return new THREE.Quaternion(vec[1], vec[2], vec[3], vec[0]).normalize();
+}
+function jacobiMax(S) {
+  const n = 4, a = S.map(r => r.slice()), v = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+  for (let sweep = 0; sweep < 50; sweep++) {
+    let off = 0;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += a[p][q] * a[p][q];
+    if (off < 1e-18) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(a[p][q]) < 1e-15) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) { const akp = a[k][p], akq = a[k][q]; a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq; }
+      for (let k = 0; k < n; k++) { const apk = a[p][k], aqk = a[q][k]; a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk; }
+      for (let k = 0; k < n; k++) { const vkp = v[k][p], vkq = v[k][q]; v[k][p] = c * vkp - s * vkq; v[k][q] = s * vkp + c * vkq; }
+    }
+  }
+  let best = 0; for (let i = 1; i < n; i++) if (a[i][i] > a[best][best]) best = i;
+  return { val: a[best][best], vec: v.map(r => r[best]) };
+}
+window.site.hornRotation = hornRotation; // for testing from the console
+$('#bAlign').onclick = () => aligning ? endAlign() : startAlign();
+$('#alClose').onclick = endAlign;
+$('#alUndoPt').onclick = () => { if (!aligning) return; if (aligning.a) aligning.a = null; else aligning.pairs.pop(); renderAlign(); };
+$('#alLevel').onchange = renderAlign;
+$('#alApply').onclick = () => {
+  const al = aligning; if (!al || !al.pairs.length) return;
+  const T = solve(al.pairs, $('#alLevel').checked, $('#alScale').checked);
+  const r = al.scan.root;
+  pushUndo(al.scan);
+  r.updateMatrix();
+  r.matrix.premultiply(T).decompose(r.position, r.quaternion, r.scale);
+  r.scale.setScalar((r.scale.x + r.scale.y + r.scale.z) / 3);
+  moved(); remember();
+  const W = al.pairs.map(pairWorld), rms = Math.sqrt(W.reduce((a, w) => a + w.a.distanceToSquared(w.b), 0) / W.length);
+  renderAlign();
+  $('#alNote').textContent = `Applied. Remaining error ${(rms * 100).toFixed(1)} cm on average` + (rms > .3 ? ': check the pairs, one may be wrong (Back removes the last).' : '. Add pairs and apply again to refine, or Done.');
+};
+
+// ---------- coverage ----------
+// Splat centres of all shown scans, counted on a grid of squares on the ground.
+// Empty squares inside the site are the holes in the capture.
+const coverage = { on: false, mode: 'density', cell: 1, band: Infinity, mesh: null, tex: null, data: null };
+const covCanvas = document.createElement('canvas'), covCtx = covCanvas.getContext('2d');
+let covTimer;
+function scheduleCoverage() { clearTimeout(covTimer); covTimer = setTimeout(computeCoverage, 250); }
+function toggleCoverage() {
+  coverage.on = !coverage.on;
+  $('#bCov').classList.toggle('on', coverage.on);
+  $('#covBox').classList.toggle('hidden', !coverage.on);
+  $('#detail').classList.remove('folded');
+  showGrid();
+  if (coverage.on) computeCoverage(); else { if (coverage.mesh) coverage.mesh.visible = false; $('#hover').style.display = 'none'; }
+  applySplatVisibility();
+}
+$('#bCov').onclick = toggleCoverage;
+function applySplatVisibility() { const show = !coverage.on || $('#covSplats').checked; scans.forEach(s => s.splat.visible = show); }
+$('#covSplats').onchange = applySplatVisibility;
+
+function computeCoverage() {
+  const list = scans.filter(s => s.visible);
+  if (!list.length) { if (coverage.mesh) coverage.mesh.visible = false; $('#covStats').textContent = 'No scans shown.'; return; }
+  // ground: low percentile of all heights
+  const ys = [];
+  for (const s of list) { const w = worldSamples(s); for (let i = 1; i < w.length; i += 3 * 25) ys.push(w[i]); }
+  ys.sort((a, b) => a - b);
+  const ground = ys[Math.floor(ys.length * .03)] ?? 0, top = ground + coverage.band;
+  const box = sitesBox(list);
+  let cell = coverage.cell;
+  const MAXC = 512;
+  const sx = box.max.x - box.min.x, sz = box.max.z - box.min.z;
+  cell = Math.max(cell, sx / MAXC, sz / MAXC);
+  const x0 = box.min.x - cell, z0 = box.min.z - cell;
+  const W = Math.ceil(sx / cell) + 2, H = Math.ceil(sz / cell) + 2;
+  const dens = new Float32Array(W * H), per = list.map(() => new Float32Array(W * H));
+  list.forEach((s, k) => {
+    const w = worldSamples(s), wt = s.stride, pk = per[k];
+    for (let i = 0; i < w.length; i += 3) {
+      if (w[i + 1] > top) continue;
+      const cx = Math.floor((w[i] - x0) / cell), cz = Math.floor((w[i + 2] - z0) / cell);
+      if (cx < 0 || cz < 0 || cx >= W || cz >= H) continue;
+      const j = cz * W + cx; dens[j] += wt; pk[j] += wt;
+    }
+  });
+  // "inside the site": squares that have covered squares on both sides in x and in z (holes, not the outside)
+  const covered = j => dens[j] > 0;
+  const inside = new Uint8Array(W * H);
+  for (let z = 0; z < H; z++) {
+    let a = -1, b = -1;
+    for (let x = 0; x < W; x++) if (covered(z * W + x)) { if (a < 0) a = x; b = x; }
+    for (let x = a; x >= 0 && x <= b; x++) inside[z * W + x] |= 1;
+  }
+  for (let x = 0; x < W; x++) {
+    let a = -1, b = -1;
+    for (let z = 0; z < H; z++) if (covered(z * W + x)) { if (a < 0) a = z; b = z; }
+    for (let z = a; z >= 0 && z <= b; z++) inside[z * W + x] |= 2;
+  }
+  coverage.data = { W, H, x0, z0, cell, ground, dens, per, list, inside };
+  drawCoverage();
+}
+
+const RAMP = ['#3b2a6b', '#2f5d8a', '#2a8a8a', '#4fae6a', '#a6c94a', '#f0dc4a']; // sparse → dense
+const GAP = '#e0442b', THIN = '#f08c2b';
+function drawCoverage() {
+  const d = coverage.data; if (!d) return;
+  const { W, H, dens, per, list, inside, cell } = d;
+  const bg = new THREE.Color(THEMES[theme].bg);
+  covCanvas.width = W; covCanvas.height = H;
+  const img = covCtx.createImageData(W, H), px = img.data;
+  // density: normalise per square metre, log scale, to the 95th percentile of covered squares
+  const area = cell * cell, vals = [];
+  for (let j = 0; j < dens.length; j++) if (dens[j] > 0) vals.push(dens[j] / area);
+  vals.sort((a, b) => a - b);
+  const hi = vals[Math.floor(vals.length * .95)] || 1;
+  const mid = vals[vals.length >> 1] || 1;
+  const thin = mid * .1; // under a tenth of a typical square: thin, worth another pass
+  const rgb = { r: 0, g: 0, b: 0 };
+  const ramp = RAMP.map(c => new THREE.Color(c)), gapC = new THREE.Color(GAP), thinC = new THREE.Color(THIN), c = new THREE.Color();
+  const scanC = list.map(s => new THREE.Color(s.color));
+  const OVER = ['#9a958c', '#f0dc4a', '#4fae6a', '#2a8a8a'].map(x => new THREE.Color(x)); // 1, 2, 3, 4+ scans
+  let nGap = 0, nThin = 0, nCov = 0, nOver = 0;
+  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+    const j = z * W + x, o = j * 4; // canvas row 0 lands on the −z side of the plane (north in top view)
+    const v = dens[j] / area;
+    let a = 0;
+    if (v <= 0) {
+      if (inside[j] === 3) { c.copy(gapC); a = .85; nGap++; }
+    } else {
+      nCov++;
+      let nScans = 0, best = 0, bestK = 0;
+      for (let k = 0; k < per.length; k++) if (per[k][j] > 0) { nScans++; if (per[k][j] > best) { best = per[k][j]; bestK = k; } }
+      if (nScans > 1) nOver++;
+      if (v < thin) nThin++;
+      if (coverage.mode === 'density') {
+        if (v < thin) c.copy(thinC);
+        else { const t = THREE.MathUtils.clamp(Math.log(v / thin) / Math.log(hi / thin), 0, 1) * (ramp.length - 1), i = Math.min(Math.floor(t), ramp.length - 2); c.copy(ramp[i]).lerp(ramp[i + 1], t - i); }
+        a = .9;
+      } else if (coverage.mode === 'overlap') { c.copy(OVER[Math.min(nScans, 4) - 1]); a = .9; }
+      else { c.copy(scanC[bestK]); a = nScans > 1 ? .95 : .7; }
+    }
+    // opaque, blended with the background by hand (see grid)
+    c.lerp(bg, 1 - a).getRGB(rgb, THREE.SRGBColorSpace); // canvas pixels are sRGB, THREE.Color is linear
+    px[o] = rgb.r * 255; px[o + 1] = rgb.g * 255; px[o + 2] = rgb.b * 255; px[o + 3] = 255;
+  }
+  covCtx.putImageData(img, 0, 0);
+  if (!coverage.mesh) {
+    coverage.tex = new THREE.CanvasTexture(covCanvas);
+    coverage.tex.magFilter = THREE.NearestFilter; coverage.tex.minFilter = THREE.LinearFilter; coverage.tex.colorSpace = THREE.SRGBColorSpace;
+    coverage.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: coverage.tex }));
+    coverage.mesh.rotation.x = -Math.PI / 2; coverage.mesh.renderOrder = -10;
+    scene.add(coverage.mesh);
+  } else {
+    // new size: three needs a new texture for a canvas that changed size
+    coverage.tex.dispose();
+    coverage.tex = new THREE.CanvasTexture(covCanvas);
+    coverage.tex.magFilter = THREE.NearestFilter; coverage.tex.colorSpace = THREE.SRGBColorSpace;
+    coverage.mesh.material.map = coverage.tex; coverage.mesh.material.needsUpdate = true;
+  }
+  coverage.mesh.scale.set(W * cell, H * cell, 1);
+  coverage.mesh.position.set(d.x0 + W * cell / 2, d.ground - .03, d.z0 + H * cell / 2);
+  coverage.mesh.visible = coverage.on;
+  const m2 = n => { const a = n * cell * cell; return a >= 1e4 ? (a / 1e4).toFixed(2) + ' ha' : Math.round(a) + ' m²'; };
+  $('#covStats').innerHTML = `Covered ${m2(nCov)} · <span style="color:${GAP}">holes ${m2(nGap)}</span> · <span style="color:${THIN}">thin ${m2(nThin)}</span> · overlapping ${m2(nOver)}`;
+  legend();
+}
+function legend() {
+  const L = $('#legend'), sw = (c, t) => `<span><i style="background:${c}"></i>${t}</span>`;
+  if (coverage.mode === 'density') L.innerHTML = sw(GAP, 'hole') + sw(THIN, 'thin') + sw(RAMP[0], 'sparse') + sw(RAMP[3], '') + sw(RAMP[5], 'dense');
+  else if (coverage.mode === 'overlap') L.innerHTML = sw(GAP, 'hole') + sw('#9a958c', '1 scan') + sw('#f0dc4a', '2') + sw('#4fae6a', '3') + sw('#2a8a8a', '4+ scans');
+  else L.innerHTML = sw(GAP, 'hole') + (coverage.data?.list || []).map(s => sw(s.color, s.name.replace(/\.[^.]+$/, ''))).join('');
+}
+const setCovMode = m => { coverage.mode = m; ['Density', 'Overlap', 'Scans'].forEach(k => $('#c' + k).classList.toggle('on', k.toLowerCase() === m)); drawCoverage(); };
+$('#cDensity').onclick = () => setCovMode('density');
+$('#cOverlap').onclick = () => setCovMode('overlap');
+$('#cScans').onclick = () => setCovMode('scans');
+function readCell() { const v = +$('#cell').value / 100; coverage.cell = .1 * Math.pow(100, v); $('#cellOut').textContent = (coverage.cell < 1 ? coverage.cell.toFixed(2) : coverage.cell.toFixed(1)) + ' m'; }
+function readBand() { const v = +$('#band').value; coverage.band = v >= 100 ? Infinity : .5 + v / 100 * 20; $('#bandOut').textContent = coverage.band === Infinity ? 'all' : coverage.band.toFixed(1) + ' m'; }
+$('#cell').oninput = () => { readCell(); if (coverage.on) scheduleCoverage(); };
+$('#band').oninput = () => { readBand(); if (coverage.on) scheduleCoverage(); };
+
+// hover over the map: what is in that square
+function hoverInfo(e) {
+  const h = $('#hover'), d = coverage.data;
+  if (!coverage.on || !d || !coverage.mesh?.visible) { h.style.display = 'none'; return; }
+  const ray = rayFrom(e.clientX, e.clientY), p = new THREE.Vector3();
+  if (!ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -(d.ground - .03)), p)) { h.style.display = 'none'; return; }
+  const cx = Math.floor((p.x - d.x0) / d.cell), cz = Math.floor((p.z - d.z0) / d.cell);
+  if (cx < 0 || cz < 0 || cx >= d.W || cz >= d.H) { h.style.display = 'none'; return; }
+  const j = cz * d.W + cx, v = d.dens[j] / (d.cell * d.cell);
+  const who = d.list.filter((s, k) => d.per[k][j] > 0).map(s => s.name.replace(/\.[^.]+$/, ''));
+  h.textContent = v > 0 ? `${fmtN(Math.round(v))} splats/m² · ${who.join(', ')}` : d.inside[j] === 3 ? 'hole: nothing captured here' : 'outside the site';
+  h.style.display = 'block'; h.style.left = (e.clientX + 14) + 'px'; h.style.top = (e.clientY + 14) + 'px';
+}
+dom.addEventListener('pointerleave', () => $('#hover').style.display = 'none');
+
+// ---------- sky ----------
+// Every Scaniverse scan has a dome of far splats around it (sky, distant houses). Each scan's own dome is
+// cropped away; one of them is drawn again on its own, only the part outside the crop, made large and
+// centred on the camera, so it stays in the background wherever you go on the site.
+const SKY_SCALE = 25;
+const sky = { name: '', root: null, mesh: null, loading: false };
+let wantSky = null; // from a saved alignment: '' = none, a name = that scan's sky, null = not said
+async function setSky(name) {
+  sky.name = name; renderSkyOptions();
+  gridOn = !name; showGrid();
+  if (sky.root) { scene.remove(sky.root); sky.mesh.dispose?.(); sky.root = sky.mesh = null; }
+  const src = scans.find(s => s.name === name);
+  if (!src) return;
+  sky.loading = true;
+  try {
+    const mesh = new SplatMesh({ fileBytes: new Uint8Array(await src.file.arrayBuffer()), fileName: src.name, lod: true });
+    await mesh.initialized;
+    if (sky.name !== name) { mesh.dispose?.(); return; } // changed meanwhile
+    mesh.quaternion.copy(src.splat.quaternion);
+    // hide the capture itself: everything inside the scan's crop sphere
+    const edit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.MULTIPLY, softEdge: 2 });
+    const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: Math.max(src.crop || src.autoCrop, src.autoCrop) * 1.2 });
+    sdf.position.copy(src.mid).applyQuaternion(src.splat.quaternion.clone().invert());
+    edit.add(sdf); mesh.add(edit);
+    const inner = new THREE.Group(); inner.position.copy(src.mid).negate(); inner.add(mesh);
+    const root = new THREE.Group(); root.add(inner);
+    // keep the source scan's heading, so its sun and skyline stay where they were
+    const e = new THREE.Euler().setFromQuaternion(src.root.quaternion, 'YXZ');
+    root.quaternion.setFromEuler(new THREE.Euler(0, e.y, 0, 'YXZ'));
+    root.scale.setScalar(SKY_SCALE);
+    root.renderOrder = -5;
+    scene.add(root);
+    sky.root = root; sky.mesh = mesh;
+  } catch (err) { console.error('sky', err); flash('Could not make the sky from ' + name); }
+  finally { sky.loading = false; }
+}
+function renderSkyOptions() {
+  const sel = $('#sky'), names = scans.map(s => s.name);
+  const now = [...sel.options].slice(1).map(o => o.value);
+  if (now.join('\n') !== names.join('\n')) {
+    sel.length = 1;
+    for (const n of names) sel.add(new Option('from ' + n.replace(/\.[^.]+$/, ''), n));
+  }
+  sel.value = sky.name;
+}
+$('#sky').onchange = e => { wantSky = e.target.value; setSky(e.target.value); };
+
+// ---------- level of detail ----------
+// Spark draws at most `budget` splats, chosen for the current view (near and on screen first, coarse far away).
+// On top of that, whole scans far from the camera are drawn coarse or not at all.
+const DEFAULT_BUDGET = spark.defaultSplatTarget?.() ?? 2.5e6;
+let near = 50, far = Infinity;
+function readBudget() {
+  const v = +$('#budget').value / 100, n = Math.round(2e5 * Math.pow(100, v) / 1e4) * 1e4; // 0.2 M … 20 M
+  spark.lodSplatCount = n; $('#budgetOut').textContent = fmtN(n);
+}
+$('#budget').value = Math.round(Math.log(DEFAULT_BUDGET / 2e5) / Math.log(100) * 100);
+function readPixel() { const v = +$('#pixel').value / 100; spark.lodRenderScale = Math.pow(8, v); $('#pixelOut').textContent = '×' + spark.lodRenderScale.toFixed(1); }
+function readNear() { const v = +$('#near').value; near = v >= 100 ? Infinity : 5 * Math.pow(200, v / 100); $('#nearOut').textContent = fmtM(near); }
+function readFar() { const v = +$('#far').value; far = v >= 100 ? Infinity : 10 * Math.pow(300, v / 100); $('#farOut').textContent = fmtM(far); }
+$('#budget').oninput = readBudget; $('#pixel').oninput = readPixel; $('#near').oninput = readNear; $('#far').oninput = readFar;
+const FAR_SCALE = .12;
+let listDirty = false;
+function updateDetail() {
+  for (const s of scans) {
+    const dist = s.visible ? worldBox(s).distanceToPoint(camera.position) : 0;
+    const hidden = s.visible && dist > far, isFar = s.visible && !hidden && dist > near;
+    if (hidden !== s.hidden) { s.hidden = hidden; s.root.visible = s.visible && !hidden; }
+    if (isFar !== s.far) { s.far = isFar; s.splat.lodScale = isFar ? FAR_SCALE : 1; listDirty = true; }
+  }
+  if (listDirty) { listDirty = false; renderList(); }
+}
+
+// ---------- loop ----------
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+applyTheme(); applyCam(); readBudget(); readPixel(); readNear(); readFar(); readCell(); readBand();
+camera.lookAt(0, 0, 0); setLook(camera.getWorldDirection(new THREE.Vector3())); applyCam();
+const clock = new THREE.Clock();
+let detailClock = 0, frames = 0, fpsClock = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .1);
+  if (tween) {
+    tween.t = Math.min(tween.t + dt / .9, 1);
+    const s = tween.t * tween.t * (3 - 2 * tween.t);
+    camera.position.lerpVectors(tween.fromPos, tween.pos, s);
+    camera.quaternion.slerpQuaternions(tween.fromQ, tween.toQ, s);
+    if (tween.t >= 1) {
+      const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+      yaw = e.y; pitch = e.x; applyCam(); tween = null;
+    }
+  }
+  const v = new THREE.Vector3(
+    (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0),
+    (keys.has('q') ? 1 : 0) - (keys.has('e') ? 1 : 0),
+    (keys.has('s') ? 1 : 0) - (keys.has('w') ? 1 : 0));
+  if (v.lengthSq()) {
+    tween = null;
+    const m = speed * speedMul * (keys.has('shift') ? 3 : 1) * dt;
+    const fwd = lookDir(), right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    camera.position.addScaledVector(right, v.x * m).addScaledVector(new THREE.Vector3(0, 1, 0), v.y * m).addScaledVector(fwd, -v.z * m);
+  }
+  if ((detailClock += dt) > .25) { detailClock = 0; updateDetail(); }
+  // looking steeply down (top view, coverage) the sky's ground half would only cover the site
+  if (sky.root) { sky.root.position.copy(camera.position); sky.root.visible = pitch > -1; }
+  if (aligning) drawMarks();
+  renderer.render(scene, camera);
+  frames++;
+  if ((fpsClock += dt) > 1) {
+    $('#perf').textContent = scans.length ? `${Math.round(frames / fpsClock)} fps · ${scans.filter(s => s.visible && !s.hidden).length}/${scans.length} scans drawn · ${scans.filter(s => s.far).length} coarse` : '';
+    frames = 0; fpsClock = 0;
+  }
+});
+</script>
+</body>
+</html>
