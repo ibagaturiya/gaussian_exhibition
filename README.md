@@ -41,6 +41,17 @@ Opening a link needs nothing: no account, no token. Only publishing needs a GitH
 
 Any saved exhibition can also be opened by URL: `exhibition_viewer.html?open=<url of the zip, or of the unzipped folder>`, from any host that allows cross-site downloads.
 
+## Site viewer
+
+`site_viewer.html` is for several scans of **one place**, e.g. a street captured in many Scaniverse scans: put them together where they belong and see where coverage is missing.
+
+- **Drop** `.ply` `.spz` `.splat` `.ksplat` (Finder-numbered exports like `Bad Zurzach.spz 2` work too). New scans are placed next to the others.
+- **Align:** click a scan, then drag the arrows (**Move**, M) or the ring (**Turn**, R), type values, or nudge with the arrow keys and `,` `.`. **Align by points:** click a sharp spot on the selected scan, then the same spot on another scan; 2 pairs are enough (scans from a phone are level already), more pairs make it more exact. ⌘Z undoes.
+- **Crop:** Scaniverse puts a dome of far splats (sky, distant houses) around every scan. Each scan is cropped to a sphere around its centre (automatic radius, `crop m` to change, 0 = off). **Sky** draws one scan's dome behind the whole site, around the camera.
+- **Coverage** (C): a map on the ground, counted from the splats of all shown scans: *density* (holes in red, thin squares in orange), *overlap* (how many scans cover each square), *scans* (which one). *Up to* leaves out roofs and trees. Hover for details. **Top view** (T) looks straight down.
+- **Detail:** *Splats* is how many Spark draws at most (it picks the nearest and on-screen ones first), *Coarser* merges small splats for speed, *Full detail* / *Hide beyond* draw far scans coarse or not at all.
+- **Save alignment** downloads a `.json` with every scan's place; drop it together with the scans to get the same layout back. The layout is also remembered in the browser, by file name.
+
 Everything runs locally in your browser; files are only uploaded when you click Publish. Press **H** in the viewer for controls.
 
 ## License
