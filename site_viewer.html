@@ -503,11 +503,20 @@ function saveLayout() {
     camera: { position: camera.position.toArray().map(v => +v.toFixed(3)), look: lookDir().toArray().map(v => +v.toFixed(4)) },
     sky: sky.name || null,
     scans: scans.map(s => ({ name: s.name, size: s.size, splats: s.total, ...placement(s) })) };
+  const text = JSON.stringify(data, null, 1);
+  // published on claude.ai, the page may only hand out files through the viewer's downloads capability
+  if (downloads) {
+    downloads.save({ filename: 'site_alignment.json', data: text })
+      .then(() => {}, err => { if (err?.code !== 'declined') flash('Could not save: ' + (err?.message || err?.code || err)); });
+    return;
+  }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   a.download = 'site_alignment.json'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+let downloads = null;
+window.claude?.use?.('downloads').then(d => { downloads = d; }, () => {});
 
 // ---------- files ----------
 // The Finder and Scaniverse number repeated exports "Bad Zurzach.spz 2", "Bad Zurzach.spz 3", …:
