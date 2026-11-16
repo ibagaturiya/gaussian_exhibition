@@ -71,6 +71,13 @@
   #sel .grid label { color: var(--muted); font-size: 11px; }
   #sel .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   #sel .row button { padding: 2px 8px; }
+  #sel .clean { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #sel .clean > label { color: var(--muted); font-size: 11px; }
+  #sel .clean .seg { display: flex; gap: 3px; }
+  #sel .clean .seg button, #sel .clean > button { padding: 1px 7px; }
+  #sel .clean input { width: 4.5em; }
+  #eraseNote { margin-top: 4px; color: var(--accent); }
+  body.erasing canvas { cursor: crosshair; }
 
   #align ol { margin: 4px 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
   #align .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
@@ -141,7 +148,7 @@
 <div id="drop"></div>
 <div id="status" class="ui"></div>
 <div id="hover" class="ui"></div>
-<div id="version">site viewer v0.1 · <a href="exhibition_viewer.html">exhibition</a> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version">site viewer v0.2 · <a href="exhibition_viewer.html">exhibition</a> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 
 <div id="bar" class="ui">
   <button id="bAdd" title="Add scans or a saved alignment">+ Add</button>
@@ -181,6 +188,17 @@
       <button id="bFly" title="Double-click in the list">Fly to</button>
       <button id="bRemove" title="Del: remove from the viewer (the file is not touched)">Remove</button>
     </div>
+    <div class="clean">
+      <label title="Hide floaters: loose splats and small clouds hanging in the air, away from the surfaces. Only inside the crop; the file is not touched">Floaters</label>
+      <div class="seg"><button data-clean="" class="on">keep</button><button data-clean="light">light</button><button data-clean="medium">medium</button><button data-clean="strong">strong</button></div>
+      <span id="clOut" class="note"></span>
+    </div>
+    <div class="clean">
+      <button id="bErase" title="X: click floaters to erase them by hand, [ ] change the brush">Erase</button>
+      <label for="er" title="Radius of the eraser in metres ([ and ] to change)">brush m</label><input id="er" type="number" step="0.05" min="0.02" value="0.3">
+      <button id="bEraseClear" title="Bring back everything erased by hand on this scan">Clear</button>
+    </div>
+    <div id="eraseNote" class="note hidden">Click on floaters of this scan to erase them · [ ] brush size · ⌘Z undoes · Esc or X ends</div>
   </div>
 
   <div id="align" class="ui hidden">
@@ -231,13 +249,14 @@
   <tr><td><b>O / T</b></td><td>overview / top view</td><td><b>N / P</b></td><td>next / previous scan</td></tr>
   <tr><td><b>C / K</b></td><td>coverage / scan colours</td><td><b>Esc</b></td><td>deselect, end aligning</td></tr>
   <tr><td><b>V</b></td><td>show / hide selected</td><td><b>Del</b></td><td>remove selected</td></tr>
+  <tr><td><b>X</b></td><td>erase floaters by clicking</td><td><b>[ / ]</b></td><td>smaller / larger eraser</td></tr>
 </table></div>
 <input id="file" type="file" multiple hidden>
 
 <script type="module">
 import * as THREE from 'three';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { SplatMesh, SparkRenderer, SplatEdit, SplatEditSdf, SplatEditSdfType, SplatEditRgbaBlendMode } from '@sparkjsdev/spark';
+import { SplatMesh, SparkRenderer, SplatEdit, SplatEditSdf, SplatEditSdfType, SplatEditRgbaBlendMode, RgbaArray } from '@sparkjsdev/spark';
 
 const $ = s => document.querySelector(s);
 const ext = n => n.toLowerCase().split('.').pop();
@@ -359,10 +378,14 @@ function prepareLocal(scan) {
 
 // crop: a sphere around the centre; outside it nothing is drawn, picked or counted. 0 = no crop
 const NO_CROP = 1e6;
+const cropRadius = scan => scan.crop === 0 ? NO_CROP : (scan.crop ?? scan.autoCrop);
+// the crop's centre in the file's own (unflipped) frame, where the splats and the edits live
+const fileCentre = scan => scan.mid.clone().applyQuaternion(scan.splat.quaternion.clone().invert());
 function applyCrop(scan) {
-  const R = scan.crop === 0 ? NO_CROP : (scan.crop ?? scan.autoCrop), loc = scan.all, m = scan.mid, R2 = R * R;
+  const R = cropRadius(scan), loc = scan.all, m = scan.mid, R2 = R * R, drop = scan.dropSample;
   const keep = [];
   for (let i = 0; i < loc.length; i += 3) {
+    if (drop && drop[i / 3]) continue; // floater taken out or erased: not picked or counted either
     const dx = loc[i] - m.x, dy = loc[i + 1] - m.y, dz = loc[i + 2] - m.z;
     if (dx * dx + dy * dy + dz * dz <= R2) keep.push(loc[i], loc[i + 1], loc[i + 2]);
   }
@@ -379,8 +402,10 @@ function applyCrop(scan) {
     edit.add(scan.cropSdf); scan.splat.add(edit);
   }
   // the sphere lives under the splat, in the file's own (unflipped) frame
-  scan.cropSdf.position.copy(m).applyQuaternion(scan.splat.quaternion.clone().invert());
+  scan.cropSdf.position.copy(fileCentre(scan));
   scan.cropSdf.radius = R;
+  // floaters are only looked for inside the crop: look again when it changes
+  if (scan.clean && scan.cleanR !== R) scheduleClean(scan);
   scan.root.updateMatrixWorld(true);
   scan.worldVersion = -1;
 }
@@ -412,7 +437,8 @@ async function loadScan(file, name) {
   status(`Reading ${name} (${(file.size / 1e6).toFixed(0)} MB)…`);
   const { pts, stride } = await splatSamples(name, buf);
   status(`Building detail levels for ${name}…`);
-  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true });
+  // nonLod keeps the full-detail splats next to the detail levels, so floaters can be taken out and the levels rebuilt
+  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true, nonLod: true });
   await splat.initialized;
   splat.quaternion.set(1, 0, 0, 0); // most 3DGS captures come in OpenCV convention (y down): flip to y up
   const root = new THREE.Group(), inner = new THREE.Group();
@@ -420,7 +446,7 @@ async function loadScan(file, name) {
   const used = new Set(scans.map(s => s.color));
   const color = PALETTE.find(c => !used.has(c)) || PALETTE[scans.length % PALETTE.length];
   const scan = { name, file, size: file.size, root, inner, splat, raw: pts, stride, total: splat.numSplats || Math.round(pts.length / 3 * stride),
-    color, visible: true, flipped: false, far: false, hidden: false };
+    color, visible: true, flipped: false, far: false, hidden: false, clean: '', erase: [] };
   prepareLocal(scan);
   return scan;
 }
@@ -462,11 +488,14 @@ const STORE = 'siteViewer.layout';
 function placement(scan) {
   const r = scan.root;
   return { position: r.position.toArray().map(v => +v.toFixed(4)), quaternion: r.quaternion.toArray().map(v => +v.toFixed(6)),
-    scale: +r.scale.x.toFixed(5), crop: scan.crop ?? null, flipped: scan.flipped, color: scan.color, visible: scan.visible };
+    scale: +r.scale.x.toFixed(5), crop: scan.crop ?? null, flipped: scan.flipped, color: scan.color, visible: scan.visible,
+    floaters: scan.clean || null, erase: scan.erase.map(e => e.map(v => +v.toFixed(3))) };
 }
 function applyPlacement(scan, p) {
   if (p.flipped !== undefined && p.flipped !== scan.flipped) setFlip(scan, p.flipped);
   if (p.crop !== undefined && p.crop !== scan.crop) { scan.crop = p.crop ?? undefined; applyCrop(scan); }
+  if (p.floaters !== undefined && (p.floaters || '') !== scan.clean) setClean(scan, p.floaters || '');
+  if (Array.isArray(p.erase) && JSON.stringify(p.erase) !== JSON.stringify(scan.erase)) setErase(scan, p.erase.filter(e => Array.isArray(e) && e.length === 4 && e.every(isFinite)));
   if (p.position) scan.root.position.fromArray(p.position);
   if (p.quaternion) scan.root.quaternion.fromArray(p.quaternion);
   if (p.scale) scan.root.scale.setScalar(p.scale);
@@ -499,7 +528,8 @@ function readLayout(json) {
 }
 function saveLayout() {
   const data = { app: 'gaussian_exhibition/site_viewer', version: 1, saved: new Date().toISOString(),
-    note: 'position = centre of each scan in metres (y up); quaternion x,y,z,w; flipped = turned upside down after loading',
+    note: 'position = centre of each scan in metres (y up); quaternion x,y,z,w; flipped = turned upside down after loading; ' +
+      'floaters = how strongly loose splats are hidden; erase = spheres x,y,z,radius in the file\'s own coordinates, hidden by hand',
     camera: { position: camera.position.toArray().map(v => +v.toFixed(3)), look: lookDir().toArray().map(v => +v.toFixed(4)) },
     sky: sky.name || null,
     scans: scans.map(s => ({ name: s.name, size: s.size, splats: s.total, ...placement(s) })) };
@@ -618,6 +648,7 @@ const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xffffff);
 selBox.visible = false; scene.add(selBox);
 
 function select(s) {
+  if (erasing && s !== selected) endErase();
   selected = s;
   if (s) { tc.attach(s.root); $('#sel').classList.remove('hidden'); $('#selName').textContent = s.name.replace(/\.[^.]+$/, ''); $('#selName').style.color = s.color; }
   else { tc.detach(); $('#sel').classList.add('hidden'); }
@@ -641,6 +672,10 @@ function fillFields() {
   for (const k of F) { const el = $('#' + k); if (document.activeElement !== el) el.value = +vals[k].toFixed(k === 'sc' ? 4 : k[0] === 'r' ? 2 : 3); }
   if (document.activeElement !== $('#cr')) $('#cr').value = +(selected.crop ?? selected.autoCrop).toFixed(1);
   $('#bCropAuto').disabled = selected.crop === undefined;
+  document.querySelectorAll('[data-clean]').forEach(b => b.classList.toggle('on', b.dataset.clean === selected.clean));
+  $('#clOut').textContent = selected.cleaning ? 'looking…' : selected.clean && selected.cleanCount != null ? fmtN(selected.cleanCount) + ' hidden' : '';
+  $('#bEraseClear').disabled = !selected.erase.length;
+  $('#bEraseClear').textContent = selected.erase.length ? `Clear ${selected.erase.length}` : 'Clear';
 }
 $('#cr').addEventListener('input', () => {
   const v = parseFloat($('#cr').value);
@@ -697,6 +732,7 @@ const undo = [];
 function pushUndo(scan) { undo.push({ scan, m: scan.root.matrix.clone(), flipped: scan.flipped }); if (undo.length > 200) undo.shift(); }
 function popUndo() {
   const u = undo.pop(); if (!u || !scans.includes(u.scan)) return;
+  if (u.erase) { setErase(u.scan, u.erase); fillFields(); remember(); return; }
   if (u.flipped !== u.scan.flipped) setFlip(u.scan, u.flipped);
   u.scan.root.matrix.copy(u.m).decompose(u.scan.root.position, u.scan.root.quaternion, u.scan.root.scale);
   moved(); remember();
@@ -711,6 +747,241 @@ function showGrid() { grid.visible = gridOn && !coverage.on; $('#bGrid').classLi
 $('#bGrid').onclick = () => { gridOn = !gridOn; showGrid(); };
 function toggleTint() { tint = !tint; scans.forEach(applyTint); $('#bTint').classList.toggle('on', tint); }
 $('#bTint').onclick = toggleTint;
+
+// ---------- floaters ----------
+// Floaters: loose splats and small clouds hanging in the air, left over from the capture. Two ways to hide them:
+// - automatic (light / medium / strong): the splats inside the crop are counted in small cubes. Splats with few
+//   neighbours, and small islands cut off from the rest, are hidden: their opacity is set to 0 and the detail
+//   levels are rebuilt from what is left, so they are gone at every distance.
+// - by hand (Erase): each click puts an erasing sphere on the splat under the cursor; this scan is hidden inside it.
+// Both live in the file's own frame, so they hold wherever the scan is moved, and are saved with the alignment.
+let HALF = null;
+function halfTable() {
+  if (HALF) return HALF;
+  HALF = new Float32Array(65536);
+  for (let h = 0; h < 65536; h++) {
+    const e = (h >> 10) & 31, f = h & 1023;
+    const v = e === 0 ? f * 2 ** -24 : e === 31 ? (f ? NaN : Infinity) : (1 + f / 1024) * 2 ** (e - 15);
+    HALF[h] = h & 0x8000 ? -v : v;
+  }
+  return HALF;
+}
+// every splat of the file: centre, opacity (0–255), largest radius; read once from Spark's packed splats
+function splatData(scan) {
+  if (scan.data) return scan.data;
+  const ps = scan.splat.packedSplats;
+  if (!ps?.packedArray || !ps.numSplats) return null;
+  const n = ps.numSplats, a = ps.packedArray, H = halfTable(), enc = ps.splatEncoding || {};
+  const lnMin = enc.lnScaleMin ?? -12, k = ((enc.lnScaleMax ?? 9) - lnMin) / 254;
+  const pos = new Float32Array(n * 3), alpha = new Uint8Array(n), size = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const w0 = a[i * 4], w1 = a[i * 4 + 1], w2 = a[i * 4 + 2], w3 = a[i * 4 + 3];
+    pos[i * 3] = H[w1 & 0xffff]; pos[i * 3 + 1] = H[w1 >>> 16]; pos[i * 3 + 2] = H[w2 & 0xffff];
+    alpha[i] = w0 >>> 24;
+    const s = Math.max(w3 & 255, (w3 >>> 8) & 255, (w3 >>> 16) & 255);
+    size[i] = s ? Math.exp(lnMin + (s - 1) * k) : 0;
+  }
+  return scan.data = { n, pos, alpha, size };
+}
+
+// sparse: hidden if its 3×3×3 cubes hold less than this share of what a typical splat has around it
+// island: a cut-off group with less than this share of all splats; big: splats wider than this × the typical one
+const CLEAN = { light: { sparse: .02, island: .0005 }, medium: { sparse: .05, island: .003 }, strong: { sparse: .1, island: .01, big: 12 } };
+function findFloaters(scan, level) {
+  const d = splatData(scan), P = CLEAN[level], { n, pos, alpha, size } = d;
+  const c = fileCentre(scan), R = cropRadius(scan), R2 = R * R;
+  const h = THREE.MathUtils.clamp(scan.autoCrop / 120, .04, .25); // cube size: 5–25 cm
+  const B = 131072, OFF = 65536, cl = v => v < 0 ? 0 : v >= B ? B - 1 : v;
+  const keyOf = (x, y, z) => (cl(Math.floor((x - c.x) / h) + OFF) * B + cl(Math.floor((y - c.y) / h) + OFF)) * B + cl(Math.floor((z - c.z) / h) + OFF);
+  const vox = new Int32Array(n).fill(-1), ids = new Map(), keys = [], counts = [];
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 3) continue; // invisible anyway
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+    const dx = x - c.x, dy = y - c.y, dz = z - c.z;
+    if (dx * dx + dy * dy + dz * dz > R2) continue; // outside the crop: not drawn, left alone
+    const key = keyOf(x, y, z);
+    let v = ids.get(key);
+    if (v === undefined) { v = keys.length; ids.set(key, v); keys.push(key); counts.push(0); }
+    counts[v]++; vox[i] = v;
+  }
+  const V = keys.length, OFFS = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) OFFS.push((dx * B + dy) * B + dz);
+  const nb = new Float64Array(V);
+  for (let v = 0; v < V; v++) { let s = 0; for (const o of OFFS) { const u = ids.get(keys[v] + o); if (u !== undefined) s += counts[u]; } nb[v] = s; }
+  // what a typical splat has around it, and how big it typically is
+  const every = Math.max(1, Math.floor(n / 100000)), nbs = [], sizes = [];
+  for (let i = 0; i < n; i += every) if (vox[i] >= 0) { nbs.push(nb[vox[i]]); sizes.push(size[i]); }
+  const med = a => a.sort((x, y) => x - y)[a.length >> 1] || 0;
+  const typical = med(nbs), typSize = med(sizes);
+  const drop = new Uint8Array(V);
+  for (let v = 0; v < V; v++) if (nb[v] < P.sparse * typical) drop[v] = 1;
+  // islands: groups of touching cubes (26 neighbours) among the rest; the largest always stays
+  const comp = new Int32Array(V).fill(-1), compSize = [];
+  let total = 0;
+  for (let v0 = 0; v0 < V; v0++) {
+    if (drop[v0] || comp[v0] >= 0) continue;
+    const id = compSize.length, stack = [v0];
+    comp[v0] = id; let sum = 0;
+    while (stack.length) {
+      const v = stack.pop(); sum += counts[v];
+      for (const o of OFFS) { const u = ids.get(keys[v] + o); if (u !== undefined && !drop[u] && comp[u] < 0) { comp[u] = id; stack.push(u); } }
+    }
+    compSize.push(sum); total += sum;
+  }
+  const largest = compSize.indexOf(Math.max(...compSize));
+  for (let v = 0; v < V; v++) if (!drop[v] && comp[v] !== largest && compSize[comp[v]] < P.island * total) drop[v] = 1;
+  const big = P.big ? Math.max(.5, P.big * typSize) : Infinity;
+  const removed = new Uint8Array(n);
+  let count = 0;
+  for (let i = 0; i < n; i++) if (vox[i] >= 0 && (drop[vox[i]] || size[i] > big)) { removed[i] = 1; count++; }
+  const isFloater = (x, y, z) => { const v = ids.get(keyOf(x, y, z)); return v !== undefined && drop[v] === 1; };
+  return { removed, count, isFloater };
+}
+
+function setClean(scan, level) { scan.clean = level; scheduleClean(scan); if (scan === selected) fillFields(); }
+function scheduleClean(scan) { clearTimeout(scan.cleanTimer); scan.cleanTimer = setTimeout(() => { scan.cleanChain = (scan.cleanChain || Promise.resolve()).then(() => runClean(scan)); }, 250); }
+// one at a time per scan: each rebuild of the detail levels replaces the one before
+async function runClean(scan) {
+  if (!scans.includes(scan)) return;
+  const ps = scan.splat.packedSplats;
+  if (!ps?.packedArray) { flash('Floaters cannot be taken out of this scan (its full detail is not kept).'); return; }
+  const level = scan.clean, R = cropRadius(scan);
+  if (level === (scan.cleanDone?.level ?? '') && (!level || scan.cleanDone.R === R)) return; // nothing changed
+  scan.cleaning = true; if (scan === selected) fillFields();
+  status(level ? `Looking for floaters in ${scan.name}…` : `Bringing back the floaters of ${scan.name}…`);
+  await new Promise(r => setTimeout(r, 30)); // let the message show before the work
+  try {
+    let rgbaArray = null, res = null;
+    if (level) {
+      res = findFloaters(scan, level);
+      const n = ps.numSplats, src = new Uint8Array(ps.packedArray.buffer, ps.packedArray.byteOffset, n * 16), rgba = new Uint8Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        rgba[i * 4] = src[i * 16]; rgba[i * 4 + 1] = src[i * 16 + 1]; rgba[i * 4 + 2] = src[i * 16 + 2];
+        rgba[i * 4 + 3] = res.removed[i] ? 0 : src[i * 16 + 3];
+      }
+      rgbaArray = new RgbaArray({ array: rgba, count: n });
+      status(`Hiding ${fmtN(res.count)} floaters in ${scan.name}: rebuilding the detail levels…`);
+    }
+    await ps.createLodSplats(rgbaArray ? { rgbaArray } : {});
+    const old = scan.splat.splatRgba;
+    scan.splat.splatRgba = rgbaArray; // used when drawn without detail levels
+    old?.dispose?.();
+    scan.splat.updateGenerator(); scan.splat.updateVersion();
+    scan.cleanDone = { level, R };
+    scan.cleanR = R;
+    scan.cleanCount = res ? res.count : null;
+    scan.isFloater = res ? res.isFloater : null;
+    scan.cleanRemoved = res ? res.removed : null;
+    updateSampleMask(scan);
+  } catch (err) { console.error('floaters', err); flash('Could not take out the floaters: ' + (err?.message || err)); }
+  finally { scan.cleaning = false; status(''); if (scan === selected) fillFields(); }
+}
+
+// samples (picking, coverage, boxes) leave out what is hidden
+function updateSampleMask(scan) {
+  const raw = scan.raw, n = raw.length / 3, f = scan.isFloater, E = scan.erase;
+  let drop = null;
+  if (f || E.length) {
+    drop = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = raw[i * 3], y = raw[i * 3 + 1], z = raw[i * 3 + 2];
+      if (f && f(x, y, z)) { drop[i] = 1; continue; }
+      for (const e of E) { const dx = x - e[0], dy = y - e[1], dz = z - e[2]; if (dx * dx + dy * dy + dz * dz < e[3] * e[3]) { drop[i] = 1; break; } }
+    }
+  }
+  scan.dropSample = drop;
+  applyCrop(scan); moved(false);
+}
+
+// erasing by hand: spheres [x, y, z, radius] in the file's frame, hidden by an edit under the splat
+function setErase(scan, list) {
+  scan.erase = list.map(e => e.slice());
+  if (!scan.eraseEdit) {
+    scan.eraseEdit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0 });
+    scan.splat.add(scan.eraseEdit);
+  }
+  const edit = scan.eraseEdit;
+  while (edit.children.length) edit.remove(edit.children[0]);
+  for (const e of scan.erase) {
+    const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
+    sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
+  }
+  edit.visible = scan.erase.length > 0;
+  updateSampleMask(scan);
+  if (scan === selected) fillFields();
+}
+
+let erasing = false, brushAt = null;
+const brush = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), new THREE.MeshBasicMaterial({ color: 0xd9442b, wireframe: true, transparent: true, opacity: .55, depthTest: false }));
+brush.renderOrder = 999; brush.visible = false; brush.frustumCulled = false; scene.add(brush);
+const eraseRadius = () => { const v = parseFloat($('#er').value); return isFinite(v) && v > 0 ? v : .3; };
+function startErase() {
+  if (!selected) return;
+  if (!splatData(selected)) { flash('This scan cannot be erased in (its full detail is not kept).'); return; }
+  if (aligning) endAlign();
+  erasing = true; tc.detach();
+  document.body.classList.add('erasing'); $('#bErase').classList.add('on'); $('#eraseNote').classList.remove('hidden');
+}
+function endErase() {
+  erasing = false; brush.visible = false; brushAt = null;
+  document.body.classList.remove('erasing'); $('#bErase').classList.remove('on'); $('#eraseNote').classList.add('hidden');
+  if (selected && !aligning) tc.attach(selected.root);
+}
+// the nearest visible splat of a scan under the cursor, among all its splats (floaters are often too few to be among the samples)
+function pickSplat(scan, x, y) {
+  const d = splatData(scan); if (!d) return null;
+  scan.root.updateMatrixWorld(true);
+  const ray = rayFrom(x, y).clone().applyMatrix4(scan.splat.matrixWorld.clone().invert()), o = ray.origin, dir = ray.direction;
+  const tanPx = PICK_PX * 2 * Math.tan(camera.fov / 2 * DEG) / dom.clientHeight;
+  const c = fileCentre(scan), R2 = cropRadius(scan) ** 2, rem = scan.cleanRemoved, E = scan.erase, { n, pos, alpha } = d;
+  let best = -1, bestT = Infinity;
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 25) continue;
+    const X = pos[i * 3], Y = pos[i * 3 + 1], Z = pos[i * 3 + 2];
+    const px = X - o.x, py = Y - o.y, pz = Z - o.z, t = px * dir.x + py * dir.y + pz * dir.z;
+    if (t <= 0 || t >= bestT) continue;
+    const r = t * tanPx;
+    if (px * px + py * py + pz * pz - t * t >= r * r) continue;
+    if ((X - c.x) ** 2 + (Y - c.y) ** 2 + (Z - c.z) ** 2 > R2) continue;
+    if (rem && rem[i]) continue;
+    let gone = false;
+    for (const e of E) if ((X - e[0]) ** 2 + (Y - e[1]) ** 2 + (Z - e[2]) ** 2 < e[3] * e[3]) { gone = true; break; }
+    if (gone) continue;
+    best = i; bestT = t;
+  }
+  if (best < 0) return null;
+  const local = new THREE.Vector3(pos[best * 3], pos[best * 3 + 1], pos[best * 3 + 2]);
+  return { local, world: scan.splat.localToWorld(local.clone()) };
+}
+function eraseClick(x, y) {
+  const s = selected, hit = pickSplat(s, x, y);
+  if (!hit) return flash(`Nothing of ${s.name.replace(/\.[^.]+$/, '')} there.`, 1500);
+  undo.push({ scan: s, erase: s.erase.map(e => e.slice()) });
+  const r = eraseRadius() / s.root.scale.x; // metres on the site → the file's units
+  setErase(s, [...s.erase, [hit.local.x, hit.local.y, hit.local.z, r]]);
+  remember(); brushAt = { x, y };
+}
+function updateBrush() {
+  if (!selected || drag) { brush.visible = false; return; }
+  if (!brushAt) return; // the cursor did not move
+  const hit = pickSplat(selected, brushAt.x, brushAt.y); brushAt = null;
+  brush.visible = !!hit;
+  if (hit) { brush.position.copy(hit.world); brush.scale.setScalar(eraseRadius()); }
+}
+function resizeBrush(f) {
+  const v = THREE.MathUtils.clamp(eraseRadius() * f, .02, 20);
+  $('#er').value = +v.toFixed(v < 1 ? 2 : 1);
+  brush.scale.setScalar(v);
+}
+document.querySelectorAll('[data-clean]').forEach(b => b.onclick = () => { if (selected) { setClean(selected, b.dataset.clean); remember(); } });
+$('#bErase').onclick = () => erasing ? endErase() : startErase();
+$('#bEraseClear').onclick = () => {
+  if (!selected || !selected.erase.length) return;
+  undo.push({ scan: selected, erase: selected.erase.map(e => e.slice()) });
+  setErase(selected, []); remember();
+};
+$('#er').addEventListener('input', () => brush.scale.setScalar(eraseRadius()));
+Object.assign(window.site, { splatData, findFloaters }); // for testing from the console
 
 // ---------- picking (on the sampled splat centres) ----------
 const PICK_PX = 7;
@@ -801,7 +1072,7 @@ function pinchState() {
   return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
 }
 dom.addEventListener('pointermove', e => {
-  if (!pointers.has(e.pointerId)) { hoverInfo(e); return; }
+  if (!pointers.has(e.pointerId)) { hoverInfo(e); if (erasing) brushAt = { x: e.clientX, y: e.clientY }; return; }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!drag) return;
   if (drag.mode === 'pinch' && pointers.size === 2) {
@@ -839,7 +1110,7 @@ function pointerEnd(e) {
   if (pointers.size === 0) drag = null;
   if (!click) return;
   const now = performance.now();
-  if (now - lastClick < 350) { lastClick = 0; const hit = pick(e.clientX, e.clientY); if (hit) flyToPoint(hit.point); return; }
+  if (!erasing && now - lastClick < 350) { lastClick = 0; const hit = pick(e.clientX, e.clientY); if (hit) flyToPoint(hit.point); return; }
   lastClick = now;
   onClick(e.clientX, e.clientY);
 }
@@ -861,6 +1132,7 @@ dom.addEventListener('wheel', e => {
 
 function onClick(x, y) {
   if (aligning) return alignClick(x, y);
+  if (erasing) return eraseClick(x, y);
   const hit = pick(x, y);
   select(hit ? hit.scan : null);
 }
@@ -889,7 +1161,9 @@ addEventListener('keydown', e => {
       const a = (k === ',' || k === '<' ? 1 : -1) * (e.shiftKey ? 5 : .5) * DEG;
       s.root.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a)); moved(); return;
     }
-    case 'Escape': if (aligning) endAlign(); else select(null); return;
+    case 'Escape': if (erasing) endErase(); else if (aligning) endAlign(); else select(null); return;
+    case '[': if (erasing || s) resizeBrush(1 / 1.25); return;
+    case ']': if (erasing || s) resizeBrush(1.25); return;
     case 'Delete': case 'Backspace': if (s) removeScan(s); return;
   }
   switch (k) {
@@ -906,6 +1180,7 @@ addEventListener('keydown', e => {
     case 'f': if (s) $('#bFlip').click(); break;
     case 'g': if (e.shiftKey) $('#bGrid').click(); else if (s) putOnGround(s); break;
     case 'v': if (s) setVisible(s, !s.visible); break;
+    case 'x': $('#bErase').click(); break;
     case 'n': case 'p': if (scans.length) { const i = s ? scans.indexOf(s) : -1; const n = scans[(i + (k === 'n' ? 1 : -1) + scans.length) % scans.length]; select(n); flyTo(n); } break;
   }
 });
@@ -928,6 +1203,7 @@ for (const o of [markA, markB, links]) { o.renderOrder = 999; o.frustumCulled = 
 
 function startAlign() {
   if (!selected) return;
+  if (erasing) endErase();
   if (scans.filter(s => s.visible).length < 2) { flash('Show at least two scans to align one to another.'); return; }
   aligning = { scan: selected, pairs: [], a: null };
   // local copy of each picked point on the moving scan, so they follow it when it moves
@@ -939,7 +1215,7 @@ function startAlign() {
 function endAlign() {
   aligning = null;
   $('#align').classList.add('hidden'); $('#bAlign').classList.remove('on');
-  if (selected) tc.attach(selected.root);
+  if (selected && !erasing) tc.attach(selected.root);
   drawMarks();
 }
 function alignClick(x, y) {
@@ -1218,7 +1494,7 @@ function hoverInfo(e) {
   h.textContent = v > 0 ? `${fmtN(Math.round(v))} splats/m² · ${who.join(', ')}` : d.inside[j] === 3 ? 'hole: nothing captured here' : 'outside the site';
   h.style.display = 'block'; h.style.left = (e.clientX + 14) + 'px'; h.style.top = (e.clientY + 14) + 'px';
 }
-dom.addEventListener('pointerleave', () => $('#hover').style.display = 'none');
+dom.addEventListener('pointerleave', () => { $('#hover').style.display = 'none'; brush.visible = false; brushAt = null; });
 
 // ---------- sky ----------
 // Every Scaniverse scan has a dome of far splats around it (sky, distant houses). Each scan's own dome is
@@ -1325,6 +1601,7 @@ renderer.setAnimationLoop(() => {
   // looking steeply down (top view, coverage) the sky's ground half would only cover the site
   if (sky.root) { sky.root.position.copy(camera.position); sky.root.visible = pitch > -1; }
   if (aligning) drawMarks();
+  if (erasing) updateBrush();
   renderer.render(scene, camera);
   frames++;
   if ((fpsClock += dt) > 1) {
