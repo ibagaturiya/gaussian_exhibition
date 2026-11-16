@@ -312,6 +312,16 @@
     <label for="ptSize" title="Point clouds only; splats and meshes are not affected">Size</label><input id="ptSize" type="range" min="-100" max="100" value="0"><output id="ptSizeOut">×1</output>
     <span class="lbl">Shape</span><div class="seg"><button id="shSquare" class="on">square</button><button id="shCircle">circle</button></div>
   </div></details>
+  <details id="gumSec"><summary><span class="ic">⟲</span>Gumball</summary><div class="body">
+    <span class="lbl">Show</span><label class="switch" style="grid-column: 2 / 4" title="G with Shift: a ring gizmo on the selected exhibit, to turn it freely"><input type="checkbox" id="gumOn"><span class="track"></span><span class="note" id="gumNote"></span></label>
+    <span class="lbl">Snap</span><div class="seg"><button data-snap="0">free</button><button data-snap="15" class="on">15°</button><button data-snap="90">90°</button></div>
+    <span class="lbl">Selected</span><div class="seg gum-acts" style="flex-wrap: wrap">
+      <button data-rot="flip" title="F: upside down, for a scan that sits on the ceiling">Flip</button>
+      <button data-rot="turn" title="R: turn 90° around the vertical">Turn 90°</button>
+      <button data-rot="tip" title="T: tip 90° forward, for a scan lying on its side">Tip 90°</button>
+      <button data-rot="reset" title="Back to how it was loaded">Reset</button></div>
+    <div class="wide note">Select an exhibit, then drag the rings (red, green, blue: tip, turn, roll). It stays standing on the floor in its place. ⌘Z undoes.</div>
+  </div></details>
   <details id="keys"><summary><span class="ic">⌘</span>Keys</summary><div class="body"><div class="wide" id="help"><table>
     <tr><td><b>Left-drag</b></td><td>orbit</td><td><b>Click</b></td><td>select</td></tr>
     <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Dbl-click</b></td><td>fly to exhibit</td></tr>
@@ -322,16 +332,17 @@
     <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove</td></tr>
     <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower</td></tr>
     <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>back on the floor</td></tr>
+    <tr><td><b>Shift+G</b></td><td>gumball on / off</td><td><b>⌘Z</b></td><td>undo turn / erase</td></tr>
     <tr><td><b>Shift+X</b></td><td>floaters on / off</td><td><b>X</b></td><td>erase by hand</td></tr>
     <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move library asset</td></tr>
   </table></div></div></details>
-  <div id="version"><span id="versionText">v0.15</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+  <div id="version"><span id="versionText">v0.16</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 </div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.15 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.16 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="touchbar" class="ui">
   <button id="tPrev" aria-label="previous exhibit">‹</button>
@@ -379,6 +390,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { PCDLoader } from 'three/addons/loaders/PCDLoader.js';
 import { Rhino3dmLoader } from 'three/addons/loaders/3DMLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { zip, unzipSync, strToU8, strFromU8 } from 'three/addons/libs/fflate.module.js';
@@ -938,11 +950,68 @@ function worldBox(ex) { return ex.box.clone().translate(ex.root.position); }
 // ---------- selection ----------
 const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xd9442b);
 selBox.visible = false; scene.add(selBox);
-function select(ex) { if (erasing && ex !== selected) endErase(); selected = ex; updateSelection(); renderList(); }
+function select(ex) { if (erasing && ex !== selected) endErase(); selected = ex; updateSelection(); renderList(); if (gumOn) setGumball(true); }
 function updateSelection() {
   selBox.visible = !!selected;
   if (selected) selBox.box.copy(worldBox(selected));
+  placeGumball();
 }
+
+// ---------- gumball ----------
+// Optional ring gizmo on the selected exhibit. It turns a handle at the exhibit's centre; the turn is passed on
+// to the exhibit's pivot and the layout fits it again, so it stays standing on the floor in its slot.
+let gumOn = false;
+const gumHandle = new THREE.Object3D(); scene.add(gumHandle);
+const gum = new TransformControls(camera, renderer.domElement);
+gum.setMode('rotate'); gum.setSpace('world'); gum.setSize(.9); gum.setRotationSnap(15 * Math.PI / 180);
+scene.add(gum.getHelper());
+window.exhibition.gumAxis = () => gum.axis; // for testing from the console
+let gumStart = null;
+gum.addEventListener('dragging-changed', e => {
+  if (e.value && selected) { undoStack.push({ ex: selected, q: selected.pivot.quaternion.clone() }); gumStart = { q: selected.pivot.quaternion.clone(), h: gumHandle.quaternion.clone() }; }
+  else { gumStart = null; placeGumball(); }
+});
+gum.addEventListener('objectChange', () => {
+  if (!gumStart || !selected) return;
+  const delta = gumHandle.quaternion.clone().multiply(gumStart.h.clone().invert());
+  selected.pivot.quaternion.copy(delta.multiply(gumStart.q)).normalize();
+  layout();
+});
+function placeGumball() {
+  const show = gumOn && selected && !erasing;
+  if (!show) { if (gum.object) gum.detach(); return; }
+  if (gumStart) return; // dragging: the handle stays where the drag began
+  gumHandle.position.copy(worldBox(selected).getCenter(new THREE.Vector3()));
+  gumHandle.quaternion.identity(); gumHandle.updateMatrixWorld(true);
+  const s = worldBox(selected).getSize(new THREE.Vector3());
+  gum.setSize(THREE.MathUtils.clamp(.9 * Math.max(s.x, s.y, s.z) / Math.max(camera.position.distanceTo(gumHandle.position), .1) * 2.2, .5, 1.6));
+  if (gum.object !== gumHandle) gum.attach(gumHandle);
+}
+function setGumball(on) {
+  gumOn = on; $('#gumOn').checked = on;
+  $('#gumNote').textContent = on ? (selected ? '' : 'select an exhibit') : '';
+  placeGumball();
+}
+// turns from buttons and keys, around the room's axes; each can be undone
+function turnSelected(kind) {
+  const ex = selected; if (!ex) return;
+  undoStack.push({ ex, q: ex.pivot.quaternion.clone() });
+  if (kind === 'reset') ex.pivot.quaternion.identity();
+  else {
+    const [axis, a] = { flip: [new THREE.Vector3(0, 0, 1), Math.PI], turn: [new THREE.Vector3(0, 1, 0), Math.PI / 2], tip: [new THREE.Vector3(1, 0, 0), -Math.PI / 2] }[kind];
+    ex.pivot.rotateOnWorldAxis(axis, a);
+  }
+  layout();
+}
+$('#gumOn').onchange = e => setGumball(e.target.checked);
+document.querySelectorAll('#detail [data-snap]').forEach(b => b.onclick = () => {
+  const d = +b.dataset.snap; gum.setRotationSnap(d ? d * Math.PI / 180 : null);
+  document.querySelectorAll('#detail [data-snap]').forEach(x => x.classList.toggle('on', x === b));
+});
+document.querySelectorAll('#detail [data-rot]').forEach(b => b.onclick = () => {
+  if (!selected) { status('Select an exhibit first (click it or its name).'); setTimeout(() => status(''), 2500); return; }
+  turnSelected(b.dataset.rot);
+});
 function renderList() {
   const ol = $('#list ol');
   ol.querySelectorAll('li:not(.err)').forEach(l => l.remove());
@@ -1010,6 +1079,7 @@ const dom = renderer.domElement;
 const pointers = new Map();
 let drag = null, gesture = null, lastTap = null;
 dom.addEventListener('pointerdown', e => {
+  if (gum.dragging || (gum.object && gum.axis !== null)) return; // the gumball has it
   try { dom.setPointerCapture(e.pointerId); } catch {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   stopTween();
@@ -1304,10 +1374,13 @@ function refreshSamples(ex) {
   layout();
   if (ex === selected) updateSelection();
 }
-const eraseUndo = [];
-function undoErase() {
-  const u = eraseUndo.pop();
-  if (u && exhibits.includes(u.ex) && u.ex.splat) setErase(u.ex, u.erase);
+// ⌘Z: erased spots and turns, last first
+const undoStack = [];
+function undoLast() {
+  const u = undoStack.pop();
+  if (!u || !exhibits.includes(u.ex)) return;
+  if (u.q) { u.ex.pivot.quaternion.copy(u.q); layout(); }
+  else if (u.ex.splat) setErase(u.ex, u.erase);
 }
 
 let erasing = false, brushAt = null, brushR = .15;
@@ -1318,10 +1391,12 @@ function startErase() {
   if (!splatData(selected)) { status('This splat cannot be erased in.'); setTimeout(() => status(''), 4000); return; }
   if (!floatersOn) setFloaters(true); // erased spots are part of the floaters: show them hidden
   erasing = true; document.body.classList.add('erasing'); renderList();
+  placeGumball();
 }
 function endErase() {
   erasing = false; brush.visible = false; brushAt = null;
   document.body.classList.remove('erasing'); renderList();
+  placeGumball();
 }
 // the nearest visible splat under the cursor, among all splats of the exhibit (floaters are too few to be found otherwise)
 function pickSplat(ex, x, y) {
@@ -1354,7 +1429,7 @@ function eraseClick(x, y) {
   const ex = selected; if (!ex?.splat) return;
   const hit = pickSplat(ex, x, y);
   if (!hit) { status(`Nothing of ${ex.name} there.`); setTimeout(() => status(''), 1500); return; }
-  eraseUndo.push({ ex, erase: ex.erase.map(e => e.slice()) });
+  undoStack.push({ ex, erase: ex.erase.map(e => e.slice()) });
   setErase(ex, [...ex.erase, [hit.local.x, hit.local.y, hit.local.z, brushR / splatScale(ex)]]); // metres in the room → the file's units
   brushAt = { x, y };
 }
@@ -1383,7 +1458,7 @@ function cleanPanel(ex) {
     ${erasing ? '<div class="tip">Click on floaters to erase them · [ ] brush size · ⌘Z undoes · Esc or X ends</div>' : ''}`;
   d.onclick = e => e.stopPropagation(); // not a click on the list item (that flies to the exhibit)
   d.querySelector('.er').onclick = e => { e.stopPropagation(); erasing ? endErase() : startErase(); };
-  d.querySelector('.clr').onclick = e => { e.stopPropagation(); eraseUndo.push({ ex, erase: ex.erase.map(e => e.slice()) }); setErase(ex, []); };
+  d.querySelector('.clr').onclick = e => { e.stopPropagation(); undoStack.push({ ex, erase: ex.erase.map(e => e.slice()) }); setErase(ex, []); };
   const inp = d.querySelector('input');
   inp.oninput = () => { const v = parseFloat(inp.value); if (isFinite(v) && v > 0) { brushR = v; brush.scale.setScalar(v); } };
   return d;
@@ -1422,7 +1497,7 @@ updateFloatUI();
 
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && eraseUndo.length) { e.preventDefault(); undoErase(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && undoStack.length) { e.preventDefault(); undoLast(); return; }
   if (e.metaKey || e.ctrlKey) return;
   if (e.target.closest?.('#list input')) { if (e.key === 'Escape') e.target.blur(); return; } // typing the brush size
   if (e.target.closest?.('#library, #publish')) { if (e.key === 'Escape') { toggleLibrary(false); togglePublish(false); } return; } // typing
@@ -1439,15 +1514,15 @@ addEventListener('keydown', e => {
     case 'x': if (e.shiftKey) setFloaters(!floatersOn); break;
     case 'h': toggleMenu(true); $('#keys').open = true; break;
     case 'b': toggleTheme(); break;
+    case 'g': if (e.shiftKey) setGumball(!gumOn); break;
     case 'u': toggleScale(); break;
     case 'l': if (!$('#bLib').classList.contains('hidden')) toggleLibrary(); break;
   }
   if (!selected) return;
-  const rotate = (axis, a) => { selected.pivot.rotateOnWorldAxis(axis, a); layout(); };
   switch (k) {
-    case 'r': rotate(new THREE.Vector3(0, 1, 0), Math.PI / 2); break;
-    case 't': rotate(new THREE.Vector3(1, 0, 0), -Math.PI / 2); break;
-    case 'f': rotate(new THREE.Vector3(0, 0, 1), Math.PI); break;
+    case 'r': turnSelected('turn'); break;
+    case 't': turnSelected('tip'); break;
+    case 'f': turnSelected('flip'); break;
     case 'x': if (!e.shiftKey && selected.splat) erasing ? endErase() : startErase(); break;
     case '[': if (erasing) { resizeBrush(1 / 1.25); break; } if (!selected.libraryAsset) { selected.userScale /= 1.25; layout(); } break; // library assets keep real scale
     case ']': if (erasing) { resizeBrush(1.25); break; } if (!selected.libraryAsset) { selected.userScale *= 1.25; layout(); } break;
@@ -1455,7 +1530,7 @@ addEventListener('keydown', e => {
     case 'escape': if (erasing) endErase(); else select(null); break;
     case 'arrowup': case 'arrowdown':
       selected.lift += (k === 'arrowup' ? 1 : -1) * (e.shiftKey ? .1 : .01); layout(); e.preventDefault(); break;
-    case 'g': selected.lift = 0; layout(); break;
+    case 'g': if (e.shiftKey) break; selected.lift = 0; layout(); break;
   }
 });
 addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (!e.shiftKey) keys.delete('shift'); });

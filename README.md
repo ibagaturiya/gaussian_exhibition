@@ -10,7 +10,9 @@ Drop, paste (⌘V / Ctrl+V) or choose files. On phones and tablets: one finger o
 
 **Floaters:** the **Remove floaters** switch in the toolbar (Shift+X) takes loose splats and small cut-off clouds out of every splat, e.g. the sky dome that makes a Scaniverse scan look like a ball, and fits each exhibit to what is left; off shows the scans as they are. It is on by default and applies to everything you add; the first time takes a few seconds per splat, switching after that is instant. Strength (light / medium / strong) is in the ☰ menu. To erase more by hand, select a splat and click **Erase** in its row (X), then click on floaters (`[` `]` brush size, ⌘Z undoes). The files are not changed; the switch and the erased spots are saved and published with the exhibition.
 
-**Menu:** ☰ holds all settings in foldable sections (Floaters, View, Detail, Points, Keys); H opens the keys. The exhibition list folds by its title.
+**Menu:** ☰ holds all settings in foldable sections (Floaters, Gumball, View, Detail, Points, Keys); H opens the keys.
+
+**Gumball:** ☰ → Gumball → Show (Shift+G) puts rings on the selected exhibit to turn it freely (snap free / 15° / 90°); it stays standing on the floor in its place. *Flip* (F) puts a scan that sits on the ceiling the right way up, *Turn 90°* (R), *Tip 90°* (T) for one lying on its side, *Reset* back to how it was loaded. ⌘Z undoes. Turns are saved and published with the exhibition. The exhibition list folds by its title.
 
 **Library:** prepared GLB assets (plinths, lamps, …) listed in `library/index.json` can be placed from the Library button, at real scale. Each collection has a `library/<collection>/manifest.json`:
 
