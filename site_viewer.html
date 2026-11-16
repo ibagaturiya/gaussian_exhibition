@@ -158,6 +158,7 @@
   <button id="bTint" title="K: colour each scan, to see seams and overlaps">Colours</button>
   <button id="bGrid" class="on" title="G with Shift: the 1 m grid on the ground (off by itself when a sky is shown)">Grid</button>
   <button id="bCov" title="C: coverage map on the ground">Coverage</button>
+  <button id="bFloat" class="on" title="Shift+X: hide (on) or show again every floater taken out or erased, in all splats, to compare. The settings stay">Floaters hidden</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
 </div>
@@ -249,7 +250,7 @@
   <tr><td><b>O / T</b></td><td>overview / top view</td><td><b>N / P</b></td><td>next / previous scan</td></tr>
   <tr><td><b>C / K</b></td><td>coverage / scan colours</td><td><b>Esc</b></td><td>deselect, end aligning</td></tr>
   <tr><td><b>V</b></td><td>show / hide selected</td><td><b>Del</b></td><td>remove selected</td></tr>
-  <tr><td><b>X</b></td><td>erase floaters by clicking</td><td><b>[ / ]</b></td><td>smaller / larger eraser</td></tr>
+  <tr><td><b>X / Shift+X</b></td><td>erase floaters / show all floaters</td><td><b>[ / ]</b></td><td>smaller / larger eraser</td></tr>
 </table></div>
 <input id="file" type="file" multiple hidden>
 
@@ -862,11 +863,7 @@ async function runClean(scan) {
       rgbaArray = new RgbaArray({ array: rgba, count: n });
       status(`Hiding ${fmtN(res.count)} floaters in ${scan.name}: rebuilding the detail levels…`);
     }
-    await ps.createLodSplats(rgbaArray ? { rgbaArray } : {});
-    const old = scan.splat.splatRgba;
-    scan.splat.splatRgba = rgbaArray; // used when drawn without detail levels
-    old?.dispose?.();
-    scan.splat.updateGenerator(); scan.splat.updateVersion();
+    await buildClean(scan, rgbaArray);
     scan.cleanDone = { level, R };
     scan.cleanR = R;
     scan.cleanCount = res ? res.count : null;
@@ -906,7 +903,7 @@ function setErase(scan, list) {
     const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
     sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
   }
-  edit.visible = scan.erase.length > 0;
+  edit.visible = !floatersShown && scan.erase.length > 0;
   updateSampleMask(scan);
   if (scan === selected) fillFields();
 }
@@ -982,6 +979,42 @@ $('#bEraseClear').onclick = () => {
 };
 $('#er').addEventListener('input', () => brush.scale.setScalar(eraseRadius()));
 Object.assign(window.site, { splatData, findFloaters }); // for testing from the console
+
+
+// Floaters button: show everything again (to compare) or hide it, for all splats at once, without losing the settings.
+// The detail levels from the file are kept next to the cleaned ones, so switching is a swap, not a rebuild.
+let floatersShown = false;
+async function buildClean(o, rgbaArray) {
+  const ps = o.splat.packedSplats;
+  o.lodOrig ??= ps.lodSplats;
+  let lod = null;
+  if (rgbaArray) {
+    // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
+    const tmp = Object.create(ps); tmp.lodSplats = undefined;
+    await tmp.createLodSplats({ rgbaArray });
+    lod = tmp.lodSplats;
+  }
+  const oldLod = o.lodClean, oldRgba = o.rgbaClean;
+  o.lodClean = lod; o.rgbaClean = rgbaArray;
+  applyFloaterView(o);
+  if (oldLod && oldLod !== lod) oldLod.dispose();
+  if (oldRgba && oldRgba !== rgbaArray) oldRgba.dispose?.();
+}
+function applyFloaterView(o) {
+  const splat = o.splat, ps = splat?.packedSplats; if (!ps) return;
+  const clean = !floatersShown && o.lodClean;
+  if (o.lodOrig) ps.lodSplats = clean ? o.lodClean : o.lodOrig;
+  splat.splatRgba = clean ? o.rgbaClean : null;
+  if (o.eraseEdit) o.eraseEdit.visible = !floatersShown && o.erase.length > 0;
+  splat.updateGenerator(); splat.updateVersion();
+}
+function toggleFloaters() {
+  floatersShown = !floatersShown;
+  scans.forEach(applyFloaterView);
+  const b = document.querySelector('#bFloat');
+  b.classList.toggle('on', !floatersShown); b.textContent = floatersShown ? 'Floaters shown' : 'Floaters hidden';
+}
+$('#bFloat').onclick = toggleFloaters;
 
 // ---------- picking (on the sampled splat centres) ----------
 const PICK_PX = 7;
@@ -1180,7 +1213,7 @@ addEventListener('keydown', e => {
     case 'f': if (s) $('#bFlip').click(); break;
     case 'g': if (e.shiftKey) $('#bGrid').click(); else if (s) putOnGround(s); break;
     case 'v': if (s) setVisible(s, !s.visible); break;
-    case 'x': $('#bErase').click(); break;
+    case 'x': if (e.shiftKey) toggleFloaters(); else $('#bErase').click(); break;
     case 'n': case 'p': if (scans.length) { const i = s ? scans.indexOf(s) : -1; const n = scans[(i + (k === 'n' ? 1 : -1) + scans.length) % scans.length]; select(n); flyTo(n); } break;
   }
 });

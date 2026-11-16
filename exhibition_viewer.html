@@ -239,6 +239,7 @@
   <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
   <button id="bPublish" title="Put the exhibition online for a few days and get a link to share; see what is online">Publish</button>
   <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
+  <button id="bFloat" class="on" title="Shift+X: hide (on) or show again every floater taken out or erased, in all splats, to compare. The settings stay">Floaters hidden</button>
   <button id="bTheme" title="B">Light</button>
   <button id="bHelp" title="H">?</button>
 </div>
@@ -251,7 +252,7 @@
   <tr><td><b>Q / E</b></td><td>up / down</td><td><b>T / F</b></td><td>tip 90° / flip upside-down</td></tr>
   <tr><td><b>1 / 2</b></td><td>slower / faster</td><td><b>[ ]</b></td><td>smaller / larger</td></tr>
   <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove selected</td></tr>
-  <tr><td><b>X</b></td><td>erase floaters of the selected splat</td><td><b>[ ] </b>while erasing</td><td>smaller / larger eraser</td></tr>
+  <tr><td><b>X / Shift+X</b></td><td>erase floaters of the selected splat / show all floaters</td><td><b>[ ] </b>while erasing</td><td>smaller / larger eraser</td></tr>
   <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower selected (Shift ×10)</td></tr>
   <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>put selected back on the floor</td></tr>
   <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move selected library asset</td></tr>
@@ -621,7 +622,7 @@ function reimport() {
           total: fresh.total, stride: fresh.stride, coreKey: undefined, core: undefined, far: undefined });
         ex.pivot.add(ex.content);
         // the new splat starts clean: put the floater settings back on it
-        Object.assign(ex, { data: null, eraseEdit: null, cleanDone: null, cleanCount: null, cleanRemoved: null, samplesFile: undefined });
+        Object.assign(ex, { data: null, eraseEdit: null, cleanDone: null, cleanCount: null, cleanRemoved: null, samplesFile: undefined, lodOrig: undefined, lodClean: null, rgbaClean: null });
         if (ex.splat && ex.erase.length) setErase(ex, ex.erase);
         if (ex.splat && ex.clean) scheduleClean(ex);
         layout(); renderList();
@@ -1178,12 +1179,8 @@ async function runClean(ex) {
       rgbaArray = new RgbaArray({ array: rgba, count: n });
       status(`Hiding ${fmtN(res.count)} floaters in ${ex.name}: rebuilding the detail levels…`);
     }
-    await ps.createLodSplats(rgbaArray ? { rgbaArray } : {});
+    await buildClean(ex, rgbaArray);
     if (ex.splat !== splat) return; // reloaded meanwhile
-    const old = splat.splatRgba;
-    splat.splatRgba = rgbaArray; // used when drawn without detail levels
-    old?.dispose?.();
-    splat.updateGenerator(); splat.updateVersion();
     ex.cleanDone = { level, splat };
     ex.cleanCount = res ? res.count : null;
     ex.cleanRemoved = res ? res.removed : null;
@@ -1206,7 +1203,7 @@ function setErase(ex, list) {
     const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
     sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
   }
-  edit.visible = ex.erase.length > 0;
+  edit.visible = !floatersShown && ex.erase.length > 0;
   refreshSamples(ex);
   if (ex === selected) renderList();
 }
@@ -1320,6 +1317,42 @@ function cleanPanel(ex) {
 }
 Object.assign(window.exhibition, { splatData, findFloaters }); // for testing from the console
 
+
+// Floaters button: show everything again (to compare) or hide it, for all splats at once, without losing the settings.
+// The detail levels from the file are kept next to the cleaned ones, so switching is a swap, not a rebuild.
+let floatersShown = false;
+async function buildClean(o, rgbaArray) {
+  const ps = o.splat.packedSplats;
+  o.lodOrig ??= ps.lodSplats;
+  let lod = null;
+  if (rgbaArray) {
+    // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
+    const tmp = Object.create(ps); tmp.lodSplats = undefined;
+    await tmp.createLodSplats({ rgbaArray });
+    lod = tmp.lodSplats;
+  }
+  const oldLod = o.lodClean, oldRgba = o.rgbaClean;
+  o.lodClean = lod; o.rgbaClean = rgbaArray;
+  applyFloaterView(o);
+  if (oldLod && oldLod !== lod) oldLod.dispose();
+  if (oldRgba && oldRgba !== rgbaArray) oldRgba.dispose?.();
+}
+function applyFloaterView(o) {
+  const splat = o.splat, ps = splat?.packedSplats; if (!ps) return;
+  const clean = !floatersShown && o.lodClean;
+  if (o.lodOrig) ps.lodSplats = clean ? o.lodClean : o.lodOrig;
+  splat.splatRgba = clean ? o.rgbaClean : null;
+  if (o.eraseEdit) o.eraseEdit.visible = !floatersShown && o.erase.length > 0;
+  splat.updateGenerator(); splat.updateVersion();
+}
+function toggleFloaters() {
+  floatersShown = !floatersShown;
+  exhibits.forEach(applyFloaterView);
+  const b = document.querySelector('#bFloat');
+  b.classList.toggle('on', !floatersShown); b.textContent = floatersShown ? 'Floaters shown' : 'Floaters hidden';
+}
+$('#bFloat').onclick = toggleFloaters;
+
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && eraseUndo.length) { e.preventDefault(); undoErase(); return; }
@@ -1336,6 +1369,7 @@ addEventListener('keydown', e => {
     case 'n': case ' ': if (exhibits.length) { const ex = exhibits[(i + 1) % exhibits.length]; select(ex); flyTo(ex); } e.preventDefault(); break;
     case 'p': if (exhibits.length) { const ex = exhibits[(i - 1 + exhibits.length) % exhibits.length]; select(ex); flyTo(ex); } break;
     case 'o': overview(); break;
+    case 'x': if (e.shiftKey) toggleFloaters(); break;
     case 'h': $('#help').classList.toggle('hidden'); break;
     case 'b': toggleTheme(); break;
     case 'u': toggleScale(); break;
@@ -1347,7 +1381,7 @@ addEventListener('keydown', e => {
     case 'r': rotate(new THREE.Vector3(0, 1, 0), Math.PI / 2); break;
     case 't': rotate(new THREE.Vector3(1, 0, 0), -Math.PI / 2); break;
     case 'f': rotate(new THREE.Vector3(0, 0, 1), Math.PI); break;
-    case 'x': if (selected.splat) erasing ? endErase() : startErase(); break;
+    case 'x': if (!e.shiftKey && selected.splat) erasing ? endErase() : startErase(); break;
     case '[': if (erasing) { resizeBrush(1 / 1.25); break; } if (!selected.libraryAsset) { selected.userScale /= 1.25; layout(); } break; // library assets keep real scale
     case ']': if (erasing) { resizeBrush(1.25); break; } if (!selected.libraryAsset) { selected.userScale *= 1.25; layout(); } break;
     case 'delete': case 'backspace': removeExhibit(selected); break;
