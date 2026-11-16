@@ -9,102 +9,148 @@
 <title>Scan Site</title>
 <style>
   :root {
-    --bg: #1b1b1a; --fg: #e8e6e1; --muted: #8d8a83; --line: #3a3936;
-    --panel: rgba(27,27,26,.82); --accent: #d9442b;
+    --bg: #141416; --fg: #f2f1ee; --muted: rgba(235,235,245,.58); --line: rgba(255,255,255,.12);
+    --glass: rgba(30,30,34,.52); --glass-hi: rgba(255,255,255,.07); --edge: rgba(255,255,255,.13);
+    --btn: rgba(255,255,255,.07); --btn-hover: rgba(255,255,255,.14); --accent: #ff5b3d; --accent-soft: rgba(255,91,61,.18);
+    --shadow: 0 12px 40px rgba(0,0,0,.38);
+    --panel: var(--glass);
   }
   :root[data-theme="light"] {
-    --bg: #eeece7; --fg: #1d1d1b; --muted: #6f6c66; --line: #cfccc4;
-    --panel: rgba(238,236,231,.86); --accent: #c23a22;
+    --bg: #ecebe7; --fg: #1c1c1e; --muted: rgba(60,60,67,.62); --line: rgba(0,0,0,.1);
+    --glass: rgba(255,255,255,.58); --glass-hi: rgba(255,255,255,.7); --edge: rgba(0,0,0,.08);
+    --btn: rgba(0,0,0,.05); --btn-hover: rgba(0,0,0,.1); --accent: #e0442a; --accent-soft: rgba(224,68,42,.13);
+    --shadow: 0 12px 36px rgba(0,0,0,.14);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
-    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   canvas { display: block; touch-action: none; }
-  .ui { position: fixed; background: var(--panel); backdrop-filter: blur(6px);
-    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
-  h1 { font-size: 13px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
-  h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 4px; }
-  button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
-    border-radius: 4px; padding: 4px 9px; cursor: pointer; }
-  button:hover { border-color: var(--fg); }
-  button.on { border-color: var(--accent); color: var(--accent); }
-  button:disabled { opacity: .4; cursor: default; border-color: var(--line); }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  input[type=checkbox] { accent-color: var(--accent); margin: 0; }
-  input[type=number] { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
-    border-radius: 4px; padding: 2px 4px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
-  select { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
-  select option { color: #1d1d1b; }
   .hidden { display: none !important; }
-  .muted { color: var(--muted); }
+
+  /* glass panels */
+  .ui { position: fixed; background: var(--glass); border: 1px solid var(--edge); border-radius: 16px; padding: 10px;
+    backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--glass-hi); }
+  button { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 10px;
+    padding: 6px 12px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; white-space: nowrap; }
+  button:hover { background: var(--btn-hover); }
+  button.on { background: var(--accent-soft); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.icon { padding: 6px 10px; min-width: 34px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
+  input[type=checkbox] { accent-color: var(--accent); }
   .note { color: var(--muted); font-size: 11px; }
-  .fold { cursor: pointer; user-select: none; }
-  .fold::after { content: ' ▾'; color: var(--muted); }
-  .folded .fold::after { content: ' ▸'; }
-  .folded > :not(.fold) { display: none !important; }
 
+  /* switch */
+  .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch .track { width: 34px; height: 20px; border-radius: 10px; background: var(--btn-hover); position: relative; transition: background .2s; flex: none; }
+  .switch .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s; }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(14px); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* toolbar */
+  #bar { top: 14px; right: 14px; display: flex; gap: 4px; align-items: center; padding: 5px; border-radius: 14px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 28px); }
+  #bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 4px; }
+  #floatSwitch { padding: 4px 8px 4px 6px; border-radius: 10px; }
+  #floatSwitch .lbl { font-weight: 500; }
+  #floatSwitch .prog { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+  /* settings menu */
+  #menu { top: 66px; right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; padding: 6px; z-index: 2; }
+  #menu.folded { display: none; }
+  #menu details { border-radius: 12px; }
+  #menu details + details { margin-top: 2px; }
+  #menu summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; border-radius: 10px; font-weight: 600; user-select: none; }
+  #menu summary::-webkit-details-marker { display: none; }
+  #menu summary:hover { background: var(--btn); }
+  #menu summary::after { content: '›'; margin-left: auto; color: var(--muted); transition: transform .2s; font-size: 15px; line-height: 1; }
+  #menu details[open] > summary::after { transform: rotate(90deg); }
+  #menu summary .ic { width: 18px; text-align: center; color: var(--muted); font-weight: 400; }
+  #menu .body { display: grid; grid-template-columns: 84px 1fr auto; gap: 8px 10px; align-items: center; padding: 4px 10px 12px; }
+  #menu .body > label, #menu .body > .lbl { color: var(--muted); }
+  #menu .body .wide { grid-column: 1 / -1; }
+  #menu output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--muted); }
+  #menu .seg { grid-column: 2 / 4; display: flex; gap: 2px; background: var(--btn); border-radius: 10px; padding: 2px; }
+  #menu .seg button { flex: 1; padding: 4px 6px; background: transparent; border-radius: 8px; }
+  #menu .seg button.on { background: var(--glass-hi); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  :root[data-theme="light"] #menu .seg button.on { background: #fff; }
+  #menu .seg button:hover:not(.on) { background: var(--btn-hover); }
+  #help table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  #help td { padding: 2px 8px 2px 0; vertical-align: top; color: var(--muted); }
+  #help b { color: var(--fg); font-weight: 600; white-space: nowrap; }
+  #version { font-size: 10px; color: var(--muted); padding: 8px 10px 4px; }
+  #version a { color: inherit; }
+
+  #status { top: 14px; left: 50%; transform: translateX(-50%); display: none; color: var(--fg); padding: 8px 14px; border-radius: 12px; max-width: calc(100vw - 28px); }
   #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
-  #empty div { text-align: center; color: var(--muted); pointer-events: auto; padding: 16px; max-width: 460px; }
-  #empty strong { display: block; color: var(--fg); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
-  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: none; pointer-events: none; }
+  #empty > div { text-align: center; color: var(--muted); pointer-events: auto; padding: 28px 32px; border-radius: 20px; background: var(--glass);
+    border: 1px solid var(--edge); backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7); box-shadow: var(--shadow); max-width: min(520px, calc(100vw - 28px)); }
+  #empty strong { display: block; color: var(--fg); font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  #empty #pick { margin-top: 14px; background: var(--accent); color: #fff; padding: 8px 18px; }
+  #notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+  #notice > div { position: static; max-width: 420px; text-align: center; color: var(--muted); padding: 22px 24px; }
+  #notice strong { display: block; color: var(--fg); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  #notice button { margin-top: 16px; }
+  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 18px; display: none; pointer-events: none; background: var(--accent-soft); }
   body.dragging #drop { display: block; }
-  #status { top: 16px; left: 50%; transform: translateX(-50%); display: none; color: var(--muted); max-width: calc(100vw - 32px); }
-  #hover { position: fixed; pointer-events: none; font-size: 11px; padding: 4px 7px; white-space: nowrap; display: none; }
-  #version { position: fixed; top: 4px; right: 18px; font-size: 10px; color: var(--muted); letter-spacing: .02em; pointer-events: none; }
-  #version a { color: inherit; pointer-events: auto; }
+  #hover { position: fixed; pointer-events: none; font-size: 11px; padding: 5px 8px; border-radius: 8px; white-space: nowrap; display: none; }
+  input[type=number], select { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 8px;
+    padding: 3px 6px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+  input[type=number]:focus, select:focus { outline: none; border-color: var(--accent); }
+  select option { color: #1d1d1b; }
+  .muted { color: var(--muted); }
+  h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 6px 0 0; }
 
-  #bar { top: 20px; right: 16px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; padding: 6px; max-width: calc(100vw - 32px); }
-
-  #left { position: fixed; top: 16px; left: 16px; width: min(330px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+  /* left column: scans, selected scan, aligning */
+  .phead { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; user-select: none; border-radius: 10px; }
+  .phead:hover { background: var(--btn); }
+  .phead h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; letter-spacing: .01em; }
+  .phead .count { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+  .chev { color: var(--muted); transition: transform .2s; font-size: 11px; }
+  .folded .chev { transform: rotate(-90deg); }
+  #left { position: fixed; top: 14px; left: 14px; width: min(330px, calc(100vw - 28px)); max-height: calc(100vh - 28px);
     display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
   #left > .ui { position: static; pointer-events: auto; }
-  #scans ol { margin: 0; padding: 0; list-style: none; max-height: 32vh; overflow: auto; }
-  #scans li { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
-  #scans li .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  #scans { padding: 6px; display: flex; flex-direction: column; min-height: 0; }
+  #scans ol { margin: 4px 0 0; padding: 0; list-style: none; max-height: 34vh; overflow: auto; }
+  #scans.folded ol { display: none; }
+  #scans li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; cursor: pointer; }
+  #scans li:hover { background: var(--btn); }
+  #scans li .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
   #scans li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #scans li .k { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #scans li.sel { background: var(--accent-soft); }
   #scans li.sel .nm { color: var(--accent); }
-  #scans li.off .nm { color: var(--muted); text-decoration: line-through; }
-  #scans li.err .nm { color: var(--muted); text-decoration: line-through; }
-
-  #sel .grid { display: grid; grid-template-columns: auto 1fr auto 1fr auto 1fr; gap: 4px 6px; align-items: center; }
+  #scans li.off .nm, #scans li.err .nm { color: var(--muted); text-decoration: line-through; }
+  #sel, #align { padding: 12px; }
+  #sel h1, #align h1 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+  #sel .grid { display: grid; grid-template-columns: auto 1fr auto 1fr auto 1fr; gap: 6px 6px; align-items: center; }
   #sel .grid label { color: var(--muted); font-size: 11px; }
-  #sel .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  #sel .row button { padding: 2px 8px; }
-  #sel .clean { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  #sel .row, #align .row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  #sel .row button, #align .row button { padding: 4px 10px; font-size: 12px; }
+  #sel .clean { display: flex; gap: 6px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }
   #sel .clean > label { color: var(--muted); font-size: 11px; }
-  #sel .clean .seg { display: flex; gap: 3px; }
-  #sel .clean .seg button, #sel .clean > button { padding: 1px 7px; }
+  #sel .clean button { padding: 4px 10px; font-size: 12px; }
   #sel .clean input { width: 4.5em; }
-  #eraseNote { margin-top: 4px; color: var(--accent); }
+  #clOut { flex-basis: 100%; }
+  #eraseNote { margin-top: 6px; color: var(--accent); }
   body.erasing canvas { cursor: crosshair; }
-
   #align ol { margin: 4px 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
-  #align .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center; }
   #align .row label { display: flex; gap: 4px; align-items: center; color: var(--muted); }
   #align .step { color: var(--accent); margin: 4px 0; }
-
-  #detail { bottom: 16px; right: 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; width: min(330px, calc(100vw - 32px)); }
-  #detail .fold { grid-column: 1 / -1; margin: 0; }
-  #detail label { color: var(--muted); }
-  #detail output { font-variant-numeric: tabular-nums; min-width: 5em; text-align: right; }
-  #detail .seg { grid-column: 2 / 4; display: flex; gap: 4px; }
-  #detail .seg button { flex: 1; padding: 2px 6px; }
-  #detail .span { grid-column: 1 / -1; }
   #legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--muted); }
-  #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  #legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
   #covStats { font-variant-numeric: tabular-nums; }
-
-  #help { bottom: 16px; left: 50%; transform: translateX(-50%); color: var(--muted); max-width: calc(100vw - 32px); display: none; z-index: 3; }
-  #help.show { display: block; }
-  #help b { color: var(--fg); font-weight: 600; }
-  #help table { border-collapse: collapse; }
-  #help td { padding: 0 10px 0 0; vertical-align: top; }
+  #perf { font-variant-numeric: tabular-nums; }
 
   @media (max-width: 760px) {
-    #detail { bottom: 8px; right: 8px; left: 8px; width: auto; }
-    #left { top: 70px; left: 8px; width: calc(100vw - 16px); max-height: 40vh; overflow: auto; }
-    #bar { right: 8px; top: 14px; }
+    body { font-size: 14px; }
+    #bar { top: 10px; right: 10px; left: 10px; justify-content: flex-start; }
+    #left { top: 66px; left: 10px; width: calc(100vw - 20px); max-height: 42vh; overflow: auto; }
+    #menu { right: 10px; width: calc(100vw - 20px); max-height: 60vh; }
   }
 </style>
 <script>
@@ -148,23 +194,22 @@
 <div id="drop"></div>
 <div id="status" class="ui"></div>
 <div id="hover" class="ui"></div>
-<div id="version">site viewer v0.2 · <a href="exhibition_viewer.html">exhibition</a> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 
 <div id="bar" class="ui">
   <button id="bAdd" title="Add scans or a saved alignment">+ Add</button>
-  <button id="bSave" title="Download the alignment (positions of all scans) as a .json file">Save alignment</button>
-  <button id="bTop" title="T: look straight down on the whole site">Top view</button>
+  <button id="bSave" title="Download the alignment (positions of all scans) as a .json file">Save</button>
   <button id="bAll" title="O: see all scans">Overview</button>
-  <button id="bTint" title="K: colour each scan, to see seams and overlaps">Colours</button>
-  <button id="bGrid" class="on" title="G with Shift: the 1 m grid on the ground (off by itself when a sky is shown)">Grid</button>
+  <button id="bTop" title="T: look straight down on the whole site">Top</button>
   <button id="bCov" title="C: coverage map on the ground">Coverage</button>
-  <button id="bFloat" class="on" title="Shift+X: hide (on) or show again every floater taken out or erased, in all splats, to compare. The settings stay">Floaters hidden</button>
-  <button id="bTheme" title="B">Light</button>
-  <button id="bHelp" title="H">?</button>
+  <span class="sep"></span>
+  <label id="floatSwitch" class="switch" title="Shift+X: take the floaters out of every scan (loose splats, small cut-off clouds), or show the scans as they are">
+    <input type="checkbox" id="floatOn"><span class="track"></span><span class="lbl">Remove floaters</span><span class="prog" id="floatProg"></span></label>
+  <span class="sep"></span>
+  <button id="bMenu" class="icon" title="Settings (H: keys)" aria-label="settings">☰</button>
 </div>
 
 <div id="left">
-  <div id="scans" class="ui hidden"><h1 class="fold">Scans <span id="scanCount" class="muted"></span></h1><ol></ol></div>
+  <div id="scans" class="ui hidden"><div class="phead fold"><h1>Scans <span class="count" id="scanCount"></span></h1><span class="chev">▾</span></div><ol></ol></div>
 
   <div id="sel" class="ui hidden">
     <h1 id="selName">–</h1>
@@ -190,14 +235,10 @@
       <button id="bRemove" title="Del: remove from the viewer (the file is not touched)">Remove</button>
     </div>
     <div class="clean">
-      <label title="Hide floaters: loose splats and small clouds hanging in the air, away from the surfaces. Only inside the crop; the file is not touched">Floaters</label>
-      <div class="seg"><button data-clean="" class="on">keep</button><button data-clean="light">light</button><button data-clean="medium">medium</button><button data-clean="strong">strong</button></div>
-      <span id="clOut" class="note"></span>
-    </div>
-    <div class="clean">
       <button id="bErase" title="X: click floaters to erase them by hand, [ ] change the brush">Erase</button>
       <label for="er" title="Radius of the eraser in metres ([ and ] to change)">brush m</label><input id="er" type="number" step="0.05" min="0.02" value="0.3">
       <button id="bEraseClear" title="Bring back everything erased by hand on this scan">Clear</button>
+      <span id="clOut" class="note"></span>
     </div>
     <div id="eraseNote" class="note hidden">Click on floaters of this scan to erase them · [ ] brush size · ⌘Z undoes · Esc or X ends</div>
   </div>
@@ -218,28 +259,38 @@
     <div id="alNote" class="note"></div>
   </div>
 </div>
+</div>
 
-<div id="detail" class="ui">
-  <h1 class="fold">Detail &amp; coverage</h1>
+<div id="menu" class="ui folded">
+  <details open><summary><span class="ic">✦</span>Floaters</summary><div class="body">
+    <span class="lbl">Remove</span><label class="switch" style="grid-column: 2 / 4"><input type="checkbox" id="floatOn2"><span class="track"></span><span class="note" id="floatNote"></span></label>
+    <span class="lbl">Strength</span><div class="seg"><button data-level="light">light</button><button data-level="medium">medium</button><button data-level="strong">strong</button></div>
+    <div class="wide note">Takes loose splats and small cut-off clouds out of every scan, inside its crop. To erase more by hand: select a scan, then <b>Erase</b> (X).</div>
+  </div></details>
+  <details><summary><span class="ic">◐</span>View</summary><div class="body">
+    <span class="lbl">Colours</span><label class="switch" style="grid-column: 2 / 4" title="K: colour each scan, to see seams and overlaps"><input type="checkbox" id="tintOn"><span class="track"></span><span class="note">one colour per scan</span></label>
+    <span class="lbl">Grid</span><label class="switch" style="grid-column: 2 / 4" title="Shift+G: the 1 m grid on the ground"><input type="checkbox" id="gridOn" checked><span class="track"></span><span class="note">1 m on the ground</span></label>
+    <span class="lbl">Theme</span><div class="seg"><button id="bTheme" title="B">Light</button></div>
+    <label for="sky" title="One scan's sky dome, drawn behind the whole site like a real sky (it moves with you, so it is always far away)">Sky</label>
+    <select id="sky" style="grid-column: 2 / 4"><option value="">none</option></select>
+  </div></details>
+  <details><summary><span class="ic">◎</span>Detail</summary><div class="body">
   <label for="budget" title="How many splats are drawn at most. Spark picks the most useful ones for the current view: near and on screen first.">Splats</label><input id="budget" type="range" min="0" max="100"><output id="budgetOut"></output>
   <label for="pixel" title="Splats smaller than this on screen are merged into coarser ones. Larger = faster.">Coarser</label><input id="pixel" type="range" min="0" max="100" value="0"><output id="pixelOut"></output>
   <label for="near" title="Scans whose nearest edge is within this distance get full detail; farther ones are drawn coarse">Full detail</label><input id="near" type="range" min="0" max="100" value="55"><output id="nearOut"></output>
   <label for="far" title="Scans farther than this are not drawn at all">Hide beyond</label><input id="far" type="range" min="0" max="100" value="100"><output id="farOut"></output>
-  <label for="sky" title="One scan's sky dome, drawn behind the whole site like a real sky (it moves with you, so it is always far away)">Sky</label>
-  <select id="sky" style="grid-column: 2 / 4; min-width: 0"><option value="">none</option></select>
-  <div class="span note" id="perf"></div>
-  <div id="covBox" class="span hidden" style="display:grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center;">
-    <h2 class="span" style="grid-column: 1 / -1; margin-bottom: 0">Coverage</h2>
+    <div class="wide note" id="perf"></div>
+  </div></details>
+  <details id="covSec"><summary><span class="ic">▦</span>Coverage</summary><div class="body" id="covBox">
+    <span class="lbl">Map</span><label class="switch" style="grid-column: 2 / 4" title="C"><input type="checkbox" id="covOn"><span class="track"></span><span class="note">on the ground</span></label>
     <label>Show</label><div class="seg"><button id="cDensity" class="on" title="How many splats per square">density</button><button id="cOverlap" title="How many scans cover each square">overlap</button><button id="cScans" title="Which scan covers each square">scans</button></div>
     <label for="cell">Square</label><input id="cell" type="range" min="0" max="100" value="45"><output id="cellOut"></output>
     <label for="band" title="Only count splats up to this height above the ground: leave out roofs and trees to see the walkable area">Up to</label><input id="band" type="range" min="0" max="100" value="100"><output id="bandOut"></output>
-    <label for="covSplats">Splats</label><span style="grid-column: 2 / 4; display: flex; gap: 6px; align-items: center"><input id="covSplats" type="checkbox" checked> <span class="muted">show scans over the map</span></span>
-    <div id="legend" class="span"></div>
-    <div id="covStats" class="span note"></div>
-  </div>
-</div>
-
-<div id="help" class="ui"><table>
+    <span class="lbl">Splats</span><label class="switch" style="grid-column: 2 / 4"><input id="covSplats" type="checkbox" checked><span class="track"></span><span class="note">scans over the map</span></label>
+    <div id="legend" class="wide"></div>
+    <div id="covStats" class="wide note"></div>
+  </div></details>
+  <details id="keys"><summary><span class="ic">⌘</span>Keys</summary><div class="body"><div class="wide" id="help"><table>
   <tr><td><b>Left-drag</b></td><td>orbit around the point you grab</td><td><b>Click</b></td><td>select scan</td></tr>
   <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Double-click</b></td><td>fly to that point</td></tr>
   <tr><td><b>Middle / Shift-drag</b></td><td>pan</td><td><b>M / R</b></td><td>move / turn selected (gizmo)</td></tr>
@@ -250,8 +301,11 @@
   <tr><td><b>O / T</b></td><td>overview / top view</td><td><b>N / P</b></td><td>next / previous scan</td></tr>
   <tr><td><b>C / K</b></td><td>coverage / scan colours</td><td><b>Esc</b></td><td>deselect, end aligning</td></tr>
   <tr><td><b>V</b></td><td>show / hide selected</td><td><b>Del</b></td><td>remove selected</td></tr>
-  <tr><td><b>X / Shift+X</b></td><td>erase floaters / show all floaters</td><td><b>[ / ]</b></td><td>smaller / larger eraser</td></tr>
-</table></div>
+  <tr><td><b>Shift+X</b></td><td>remove floaters on / off</td><td><b>X</b></td><td>erase by hand</td></tr>
+  <tr><td><b>H</b></td><td>this menu, keys</td><td><b>[ / ]</b></td><td>smaller / larger eraser</td></tr>
+</table></div></div></details>
+  <div id="version">site viewer v0.3 · <a href="exhibition_viewer.html">exhibition viewer</a> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+</div>
 <input id="file" type="file" multiple hidden>
 
 <script type="module">
@@ -406,7 +460,7 @@ function applyCrop(scan) {
   scan.cropSdf.position.copy(fileCentre(scan));
   scan.cropSdf.radius = R;
   // floaters are only looked for inside the crop: look again when it changes
-  if (scan.clean && scan.cleanR !== R) scheduleClean(scan);
+  if (floatersOn && scans.includes(scan) && !cachedClean(scan)) queueClean(scan);
   scan.root.updateMatrixWorld(true);
   scan.worldVersion = -1;
 }
@@ -468,6 +522,7 @@ function addScan(scan) {
   moved(false);
   applyTint(scan);
   renderList();
+  if (floatersOn) queueClean(scan);
   // the first scan gives the sky, unless a saved alignment named another one (or none)
   if (wantSky === null ? !sky.name && !sky.loading : wantSky === scan.name) setSky(scan.name);
 }
@@ -490,12 +545,11 @@ function placement(scan) {
   const r = scan.root;
   return { position: r.position.toArray().map(v => +v.toFixed(4)), quaternion: r.quaternion.toArray().map(v => +v.toFixed(6)),
     scale: +r.scale.x.toFixed(5), crop: scan.crop ?? null, flipped: scan.flipped, color: scan.color, visible: scan.visible,
-    floaters: scan.clean || null, erase: scan.erase.map(e => e.map(v => +v.toFixed(3))) };
+    erase: scan.erase.map(e => e.map(v => +v.toFixed(3))) };
 }
 function applyPlacement(scan, p) {
   if (p.flipped !== undefined && p.flipped !== scan.flipped) setFlip(scan, p.flipped);
   if (p.crop !== undefined && p.crop !== scan.crop) { scan.crop = p.crop ?? undefined; applyCrop(scan); }
-  if (p.floaters !== undefined && (p.floaters || '') !== scan.clean) setClean(scan, p.floaters || '');
   if (Array.isArray(p.erase) && JSON.stringify(p.erase) !== JSON.stringify(scan.erase)) setErase(scan, p.erase.filter(e => Array.isArray(e) && e.length === 4 && e.every(isFinite)));
   if (p.position) scan.root.position.fromArray(p.position);
   if (p.quaternion) scan.root.quaternion.fromArray(p.quaternion);
@@ -521,6 +575,8 @@ function readLayout(json) {
     const scan = scans.find(s => s.name === p.name);
     if (scan) { pushUndo(scan); applyPlacement(scan, p); now++; } else pendingLayout.set(p.name, p);
   }
+  if (json?.floaters) setFloaters(!!json.floaters.on, CLEAN[json.floaters.level] ? json.floaters.level : floaterLevel);
+  else { const old = list.find(p => CLEAN[p?.floaters]); if (old) setFloaters(true, old.floaters); } // saved by v0.2, per scan
   if (json && 'sky' in json) { wantSky = json.sky || ''; if (!wantSky || scans.some(s => s.name === wantSky)) setSky(wantSky); }
   if (json?.camera?.position) { camera.position.fromArray(json.camera.position); if (json.camera.look) { setLook(new THREE.Vector3().fromArray(json.camera.look)); applyCam(); } }
   moved(); renderList(); scans.forEach(applyTint);
@@ -530,9 +586,9 @@ function readLayout(json) {
 function saveLayout() {
   const data = { app: 'gaussian_exhibition/site_viewer', version: 1, saved: new Date().toISOString(),
     note: 'position = centre of each scan in metres (y up); quaternion x,y,z,w; flipped = turned upside down after loading; ' +
-      'floaters = how strongly loose splats are hidden; erase = spheres x,y,z,radius in the file\'s own coordinates, hidden by hand',
+      'floaters = the Remove floaters switch and its strength; erase = spheres x,y,z,radius in the file\'s own coordinates, hidden by hand',
     camera: { position: camera.position.toArray().map(v => +v.toFixed(3)), look: lookDir().toArray().map(v => +v.toFixed(4)) },
-    sky: sky.name || null,
+    sky: sky.name || null, floaters: { on: floatersOn, level: floaterLevel },
     scans: scans.map(s => ({ name: s.name, size: s.size, splats: s.total, ...placement(s) })) };
   const text = JSON.stringify(data, null, 1);
   // published on claude.ai, the page may only hand out files through the viewer's downloads capability
@@ -623,11 +679,11 @@ function renderList() {
     li.querySelector('.nm').textContent = n; ol.append(li);
   }
   renderSkyOptions();
-  $('#scanCount').textContent = scans.length ? `· ${scans.length} · ${fmtN(scans.reduce((a, s) => a + s.total, 0))} splats` : '';
+  $('#scanCount').textContent = scans.length ? `${scans.length} · ${fmtN(scans.reduce((a, s) => a + s.total, 0))} splats` : '';
+  updateFloatUI();
 }
 function setVisible(s, v) { s.visible = v; moved(false); renderList(); remember(); }
 $('#scans .fold').onclick = () => $('#scans').classList.toggle('folded');
-$('#detail .fold').onclick = () => $('#detail').classList.toggle('folded');
 
 // ---------- selection + transform ----------
 const tc = new TransformControls(camera, dom);
@@ -673,8 +729,7 @@ function fillFields() {
   for (const k of F) { const el = $('#' + k); if (document.activeElement !== el) el.value = +vals[k].toFixed(k === 'sc' ? 4 : k[0] === 'r' ? 2 : 3); }
   if (document.activeElement !== $('#cr')) $('#cr').value = +(selected.crop ?? selected.autoCrop).toFixed(1);
   $('#bCropAuto').disabled = selected.crop === undefined;
-  document.querySelectorAll('[data-clean]').forEach(b => b.classList.toggle('on', b.dataset.clean === selected.clean));
-  $('#clOut').textContent = selected.cleaning ? 'looking…' : selected.clean && selected.cleanCount != null ? fmtN(selected.cleanCount) + ' hidden' : '';
+  $('#clOut').textContent = !floatersOn ? 'Remove floaters is off: shown as scanned' : selected.cleaning ? 'removing floaters…' : selected.cleanCount != null ? fmtN(selected.cleanCount) + ' floaters hidden' : selected.queued ? 'floaters: waiting…' : '';
   $('#bEraseClear').disabled = !selected.erase.length;
   $('#bEraseClear').textContent = selected.erase.length ? `Clear ${selected.erase.length}` : 'Clear';
 }
@@ -744,10 +799,10 @@ let tint = false;
 function applyTint(s) { s.splat.recolor = tint ? new THREE.Color(s.color).lerp(new THREE.Color(1, 1, 1), .35) : new THREE.Color(1, 1, 1); }
 // grid: drawn opaque, so it would cut through the sky; hidden under the coverage map anyway
 let gridOn = true;
-function showGrid() { grid.visible = gridOn && !coverage.on; $('#bGrid').classList.toggle('on', gridOn); }
-$('#bGrid').onclick = () => { gridOn = !gridOn; showGrid(); };
-function toggleTint() { tint = !tint; scans.forEach(applyTint); $('#bTint').classList.toggle('on', tint); }
-$('#bTint').onclick = toggleTint;
+function showGrid() { grid.visible = gridOn && !coverage.on; $('#gridOn').checked = gridOn; }
+$('#gridOn').onchange = e => { gridOn = e.target.checked; showGrid(); };
+function toggleTint() { tint = !tint; scans.forEach(applyTint); $('#tintOn').checked = tint; }
+$('#tintOn').onchange = toggleTint;
 
 // ---------- floaters ----------
 // Floaters: loose splats and small clouds hanging in the air, left over from the capture. Two ways to hide them:
@@ -839,44 +894,81 @@ function findFloaters(scan, level) {
   return { removed, count, isFloater };
 }
 
-function setClean(scan, level) { scan.clean = level; scheduleClean(scan); if (scan === selected) fillFields(); }
-function scheduleClean(scan) { clearTimeout(scan.cleanTimer); scan.cleanTimer = setTimeout(() => { scan.cleanChain = (scan.cleanChain || Promise.resolve()).then(() => runClean(scan)); }, 250); }
-// one at a time per scan: each rebuild of the detail levels replaces the one before
+// The Remove floaters switch works on every scan: on = floaters taken out (at the chosen strength, inside each crop),
+// off = the scans as they are. Each scan keeps the file's own detail levels next to its cleaned ones, so switching is a swap;
+// only cleaning a scan for the first time (or after its crop changed) takes a few seconds, one scan after the other.
+const FLOATER_KEY = 'siteViewer.floaters';
+const floaterPref = (() => { try { return JSON.parse(localStorage.getItem(FLOATER_KEY)) || {}; } catch { return {}; } })();
+let floatersOn = floaterPref.on ?? true, floaterLevel = CLEAN[floaterPref.level] ? floaterPref.level : 'medium';
+let cleanChain = Promise.resolve(), cleanPending = 0;
+const cachedClean = scan => floatersOn && scan.cache && scan.cache.level === floaterLevel && scan.cache.R === cropRadius(scan) ? scan.cache : null;
+function queueClean(scan) {
+  if (scan.queued || scan.cleanFailed || !scans.includes(scan)) return;
+  scan.queued = true; cleanPending++; updateFloatUI();
+  cleanChain = cleanChain.then(() => runClean(scan)).finally(() => { cleanPending--; updateFloatUI(); });
+}
 async function runClean(scan) {
-  if (!scans.includes(scan)) return;
+  scan.queued = false;
+  if (!scans.includes(scan) || !floatersOn || cachedClean(scan)) { applyFloaterView(scan); return; }
   const ps = scan.splat.packedSplats;
-  if (!ps?.packedArray) { flash('Floaters cannot be taken out of this scan (its full detail is not kept).'); return; }
-  const level = scan.clean, R = cropRadius(scan);
-  if (level === (scan.cleanDone?.level ?? '') && (!level || scan.cleanDone.R === R)) return; // nothing changed
+  if (!ps?.packedArray) { scan.cleanFailed = true; flash(`Floaters cannot be taken out of ${scan.name} (its full detail is not kept).`); return; }
+  const level = floaterLevel, R = cropRadius(scan);
   scan.cleaning = true; if (scan === selected) fillFields();
-  status(level ? `Looking for floaters in ${scan.name}…` : `Bringing back the floaters of ${scan.name}…`);
+  status(`Removing floaters: ${scan.name}${cleanPending > 1 ? ` (${cleanPending - 1} more after this)` : ''}`);
   await new Promise(r => setTimeout(r, 30)); // let the message show before the work
+  let ok = false;
   try {
-    let rgbaArray = null, res = null;
-    if (level) {
-      res = findFloaters(scan, level);
-      const n = ps.numSplats, src = new Uint8Array(ps.packedArray.buffer, ps.packedArray.byteOffset, n * 16), rgba = new Uint8Array(n * 4);
-      for (let i = 0; i < n; i++) {
-        rgba[i * 4] = src[i * 16]; rgba[i * 4 + 1] = src[i * 16 + 1]; rgba[i * 4 + 2] = src[i * 16 + 2];
-        rgba[i * 4 + 3] = res.removed[i] ? 0 : src[i * 16 + 3];
-      }
-      rgbaArray = new RgbaArray({ array: rgba, count: n });
-      status(`Hiding ${fmtN(res.count)} floaters in ${scan.name}: rebuilding the detail levels…`);
+    const res = findFloaters(scan, level);
+    const n = ps.numSplats, src = new Uint8Array(ps.packedArray.buffer, ps.packedArray.byteOffset, n * 16), rgba = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      rgba[i * 4] = src[i * 16]; rgba[i * 4 + 1] = src[i * 16 + 1]; rgba[i * 4 + 2] = src[i * 16 + 2];
+      rgba[i * 4 + 3] = res.removed[i] ? 0 : src[i * 16 + 3];
     }
-    await buildClean(scan, rgbaArray);
-    scan.cleanDone = { level, R };
-    scan.cleanR = R;
-    scan.cleanCount = res ? res.count : null;
-    scan.isFloater = res ? res.isFloater : null;
-    scan.cleanRemoved = res ? res.removed : null;
-    updateSampleMask(scan);
-  } catch (err) { console.error('floaters', err); flash('Could not take out the floaters: ' + (err?.message || err)); }
-  finally { scan.cleaning = false; status(''); if (scan === selected) fillFields(); }
+    const rgbaArray = new RgbaArray({ array: rgba, count: n });
+    scan.lodOrig ??= ps.lodSplats;
+    // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
+    const tmp = Object.create(ps); tmp.lodSplats = undefined;
+    await tmp.createLodSplats({ rgbaArray });
+    if (!scans.includes(scan)) { tmp.lodSplats?.dispose(); return; }
+    const old = scan.cache;
+    scan.cache = { level, R, lod: tmp.lodSplats, rgba: rgbaArray, removed: res.removed, isFloater: res.isFloater, count: res.count };
+    applyFloaterView(scan);
+    if (old) { if (old.lod !== ps.lodSplats) old.lod?.dispose(); old.rgba?.dispose?.(); }
+    ok = true;
+  } catch (err) { scan.cleanFailed = true; console.error('floaters', err); flash('Could not take out the floaters of ' + scan.name + ': ' + (err?.message || err)); }
+  finally { scan.cleaning = false; if (cleanPending <= 1) status(''); if (scan === selected) fillFields(); }
+  // the switch, strength or crop may have changed meanwhile
+  if (ok && floatersOn && !cachedClean(scan)) queueClean(scan);
+}
+function applyFloaterView(scan) {
+  const splat = scan.splat, ps = splat?.packedSplats; if (!ps) return;
+  scan.lodOrig ??= ps.lodSplats;
+  const c = cachedClean(scan);
+  if (scan.lodOrig) ps.lodSplats = c ? c.lod : scan.lodOrig;
+  splat.splatRgba = c ? c.rgba : null; // used when drawn without detail levels
+  scan.cleanRemoved = c ? c.removed : null; scan.isFloater = c ? c.isFloater : null; scan.cleanCount = c ? c.count : null;
+  if (scan.eraseEdit) scan.eraseEdit.visible = floatersOn && scan.erase.length > 0;
+  splat.updateGenerator(); splat.updateVersion();
+  updateSampleMask(scan);
+  if (scan === selected) fillFields();
+}
+function setFloaters(on, level = floaterLevel) {
+  floatersOn = on; floaterLevel = level;
+  try { localStorage.setItem(FLOATER_KEY, JSON.stringify({ on, level })); } catch {}
+  for (const sc of scans) { applyFloaterView(sc); if (on && !cachedClean(sc)) queueClean(sc); }
+  updateFloatUI();
+}
+function updateFloatUI() {
+  $('#floatOn').checked = $('#floatOn2').checked = floatersOn;
+  document.querySelectorAll('#menu [data-level]').forEach(b => b.classList.toggle('on', b.dataset.level === floaterLevel));
+  const hidden = scans.reduce((a, sc) => a + (sc.cleanCount || 0), 0);
+  $('#floatProg').textContent = cleanPending ? `${cleanPending} to go` : '';
+  $('#floatNote').textContent = !floatersOn ? 'off: the scans as they are' : cleanPending ? `working… ${cleanPending} to go` : hidden ? `${fmtN(hidden)} floaters hidden` : 'on';
 }
 
 // samples (picking, coverage, boxes) leave out what is hidden
 function updateSampleMask(scan) {
-  const raw = scan.raw, n = raw.length / 3, f = scan.isFloater, E = scan.erase;
+  const raw = scan.raw, n = raw.length / 3, f = scan.isFloater, E = floatersOn ? scan.erase : [];
   let drop = null;
   if (f || E.length) {
     drop = new Uint8Array(n);
@@ -903,7 +995,7 @@ function setErase(scan, list) {
     const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
     sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
   }
-  edit.visible = !floatersShown && scan.erase.length > 0;
+  edit.visible = floatersOn && scan.erase.length > 0;
   updateSampleMask(scan);
   if (scan === selected) fillFields();
 }
@@ -916,6 +1008,7 @@ function startErase() {
   if (!selected) return;
   if (!splatData(selected)) { flash('This scan cannot be erased in (its full detail is not kept).'); return; }
   if (aligning) endAlign();
+  if (!floatersOn) setFloaters(true); // erased spots count as floaters: show them hidden
   erasing = true; tc.detach();
   document.body.classList.add('erasing'); $('#bErase').classList.add('on'); $('#eraseNote').classList.remove('hidden');
 }
@@ -970,7 +1063,6 @@ function resizeBrush(f) {
   $('#er').value = +v.toFixed(v < 1 ? 2 : 1);
   brush.scale.setScalar(v);
 }
-document.querySelectorAll('[data-clean]').forEach(b => b.onclick = () => { if (selected) { setClean(selected, b.dataset.clean); remember(); } });
 $('#bErase').onclick = () => erasing ? endErase() : startErase();
 $('#bEraseClear').onclick = () => {
   if (!selected || !selected.erase.length) return;
@@ -981,40 +1073,18 @@ $('#er').addEventListener('input', () => brush.scale.setScalar(eraseRadius()));
 Object.assign(window.site, { splatData, findFloaters }); // for testing from the console
 
 
-// Floaters button: show everything again (to compare) or hide it, for all splats at once, without losing the settings.
-// The detail levels from the file are kept next to the cleaned ones, so switching is a swap, not a rebuild.
-let floatersShown = false;
-async function buildClean(o, rgbaArray) {
-  const ps = o.splat.packedSplats;
-  o.lodOrig ??= ps.lodSplats;
-  let lod = null;
-  if (rgbaArray) {
-    // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
-    const tmp = Object.create(ps); tmp.lodSplats = undefined;
-    await tmp.createLodSplats({ rgbaArray });
-    lod = tmp.lodSplats;
-  }
-  const oldLod = o.lodClean, oldRgba = o.rgbaClean;
-  o.lodClean = lod; o.rgbaClean = rgbaArray;
-  applyFloaterView(o);
-  if (oldLod && oldLod !== lod) oldLod.dispose();
-  if (oldRgba && oldRgba !== rgbaArray) oldRgba.dispose?.();
+$('#floatOn').onchange = e => setFloaters(e.target.checked);
+$('#floatOn2').onchange = e => setFloaters(e.target.checked);
+document.querySelectorAll('#menu [data-level]').forEach(b => b.onclick = () => setFloaters(true, b.dataset.level));
+updateFloatUI();
+
+// one menu for all settings, under the toolbar
+function toggleMenu(open = $('#menu').classList.contains('folded')) {
+  $('#menu').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px';
+  $('#menu').classList.toggle('folded', !open);
+  $('#bMenu').classList.toggle('on', open);
 }
-function applyFloaterView(o) {
-  const splat = o.splat, ps = splat?.packedSplats; if (!ps) return;
-  const clean = !floatersShown && o.lodClean;
-  if (o.lodOrig) ps.lodSplats = clean ? o.lodClean : o.lodOrig;
-  splat.splatRgba = clean ? o.rgbaClean : null;
-  if (o.eraseEdit) o.eraseEdit.visible = !floatersShown && o.erase.length > 0;
-  splat.updateGenerator(); splat.updateVersion();
-}
-function toggleFloaters() {
-  floatersShown = !floatersShown;
-  scans.forEach(applyFloaterView);
-  const b = document.querySelector('#bFloat');
-  b.classList.toggle('on', !floatersShown); b.textContent = floatersShown ? 'Floaters shown' : 'Floaters hidden';
-}
-$('#bFloat').onclick = toggleFloaters;
+$('#bMenu').onclick = () => toggleMenu();
 
 // ---------- picking (on the sampled splat centres) ----------
 const PICK_PX = 7;
@@ -1207,19 +1277,18 @@ addEventListener('keydown', e => {
     case 'c': toggleCoverage(); break;
     case 'k': toggleTint(); break;
     case 'b': theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); break;
-    case 'h': case '?': $('#help').classList.toggle('show'); break;
+    case 'h': case '?': toggleMenu(true); $('#keys').open = true; break;
     case 'm': setGizmo('translate'); break;
     case 'r': setGizmo('rotate'); break;
     case 'f': if (s) $('#bFlip').click(); break;
-    case 'g': if (e.shiftKey) $('#bGrid').click(); else if (s) putOnGround(s); break;
+    case 'g': if (e.shiftKey) { gridOn = !gridOn; showGrid(); } else if (s) putOnGround(s); break;
     case 'v': if (s) setVisible(s, !s.visible); break;
-    case 'x': if (e.shiftKey) toggleFloaters(); else $('#bErase').click(); break;
+    case 'x': if (e.shiftKey) setFloaters(!floatersOn); else $('#bErase').click(); break;
     case 'n': case 'p': if (scans.length) { const i = s ? scans.indexOf(s) : -1; const n = scans[(i + (k === 'n' ? 1 : -1) + scans.length) % scans.length]; select(n); flyTo(n); } break;
   }
 });
 addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (!e.shiftKey) keys.delete('shift'); });
 addEventListener('blur', () => keys.clear());
-$('#bHelp').onclick = () => $('#help').classList.toggle('show');
 $('#bTheme').onclick = () => { theme = theme === 'dark' ? 'light' : 'dark'; applyTheme(); };
 $('#bSave').onclick = saveLayout;
 
@@ -1383,13 +1452,14 @@ function scheduleCoverage() { clearTimeout(covTimer); covTimer = setTimeout(comp
 function toggleCoverage() {
   coverage.on = !coverage.on;
   $('#bCov').classList.toggle('on', coverage.on);
-  $('#covBox').classList.toggle('hidden', !coverage.on);
-  $('#detail').classList.remove('folded');
+  $('#covOn').checked = coverage.on;
+  if (coverage.on) { toggleMenu(true); $('#covSec').open = true; }
   showGrid();
   if (coverage.on) computeCoverage(); else { if (coverage.mesh) coverage.mesh.visible = false; $('#hover').style.display = 'none'; }
   applySplatVisibility();
 }
 $('#bCov').onclick = toggleCoverage;
+$('#covOn').onchange = toggleCoverage;
 function applySplatVisibility() { const show = !coverage.on || $('#covSplats').checked; scans.forEach(s => s.splat.visible = show); }
 $('#covSplats').onchange = applySplatVisibility;
 
