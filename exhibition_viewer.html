@@ -67,6 +67,12 @@
   #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 2px 0 4px; white-space: normal;
     color: var(--muted); font-size: 11px; }
   #list li .meta span:nth-child(odd) { color: var(--fg); }
+  #list li .clean { white-space: normal; margin: 4px 0 6px; cursor: default; color: var(--muted); font-size: 11px; }
+  #list li .clean .row { display: flex; gap: 4px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  #list li .clean button { padding: 0 6px; font-size: 11px; }
+  #list li .clean input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; width: 4.5em; }
+  #list li .clean .tip { color: var(--accent); margin-top: 3px; }
+  body.erasing canvas { cursor: crosshair; }
   #library, #publish { top: 66px; right: 16px; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 82px);
     display: flex; flex-direction: column; gap: 6px; z-index: 2; }
   #library header, #publish header { display: flex; align-items: center; gap: 6px; }
@@ -219,12 +225,12 @@
 
 <div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
 
-<div id="version"><span id="versionText">v0.13 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+<div id="version"><span id="versionText">v0.14 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.13 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.14 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
@@ -245,6 +251,7 @@
   <tr><td><b>Q / E</b></td><td>up / down</td><td><b>T / F</b></td><td>tip 90° / flip upside-down</td></tr>
   <tr><td><b>1 / 2</b></td><td>slower / faster</td><td><b>[ ]</b></td><td>smaller / larger</td></tr>
   <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove selected</td></tr>
+  <tr><td><b>X</b></td><td>erase floaters of the selected splat</td><td><b>[ ] </b>while erasing</td><td>smaller / larger eraser</td></tr>
   <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower selected (Shift ×10)</td></tr>
   <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>put selected back on the floor</td></tr>
   <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move selected library asset</td></tr>
@@ -314,7 +321,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { zip, unzipSync, strToU8, strFromU8 } from 'three/addons/libs/fflate.module.js';
 import { MeshoptSimplifier } from 'https://cdn.jsdelivr.net/npm/meshoptimizer@0.25.0/meshopt_simplifier.module.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
+import { SplatMesh, SparkRenderer, SplatEdit, SplatEditSdf, SplatEditSdfType, SplatEditRgbaBlendMode, RgbaArray } from '@sparkjsdev/spark';
 
 // ---------- scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -613,6 +620,10 @@ function reimport() {
         Object.assign(ex, { content: fresh.content, localBox: fresh.localBox, splat: fresh.splat, samples: fresh.samples,
           total: fresh.total, stride: fresh.stride, coreKey: undefined, core: undefined, far: undefined });
         ex.pivot.add(ex.content);
+        // the new splat starts clean: put the floater settings back on it
+        Object.assign(ex, { data: null, eraseEdit: null, cleanDone: null, cleanCount: null, cleanRemoved: null, samplesFile: undefined });
+        if (ex.splat && ex.erase.length) setErase(ex, ex.erase);
+        if (ex.splat && ex.clean) scheduleClean(ex);
         layout(); renderList();
       } catch (err) { console.error(ex.name, err); }
     }
@@ -628,7 +639,8 @@ function isSplatPly(buf) {
 
 async function loadSplat(name, buf) {
   const samples = await splatSamples(name, buf);
-  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true });
+  // nonLod keeps the full-detail splats next to the detail levels, so floaters can be taken out and the levels rebuilt
+  const splat = new SplatMesh({ fileBytes: new Uint8Array(buf), fileName: name, lod: true, nonLod: true });
   await splat.initialized;
   // most 3DGS captures come in OpenCV convention (y down): flip to y up
   splat.quaternion.set(1, 0, 0, 0);
@@ -784,7 +796,7 @@ function addExhibit(data) {
   const root = new THREE.Group();
   const pivot = new THREE.Group();
   pivot.add(data.content); root.add(pivot); scene.add(root);
-  const ex = { ...data, root, pivot, userScale: 1, lift: 0 };
+  const ex = { ...data, root, pivot, userScale: 1, lift: 0, clean: '', erase: [] };
   exhibits.push(ex);
   drawLabel(ex);
   renderList();
@@ -862,7 +874,7 @@ function worldBox(ex) { return ex.box.clone().translate(ex.root.position); }
 // ---------- selection ----------
 const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xd9442b);
 selBox.visible = false; scene.add(selBox);
-function select(ex) { selected = ex; updateSelection(); renderList(); }
+function select(ex) { if (erasing && ex !== selected) endErase(); selected = ex; updateSelection(); renderList(); }
 function updateSelection() {
   selBox.visible = !!selected;
   if (selected) selBox.box.copy(worldBox(selected));
@@ -879,6 +891,7 @@ function renderList() {
     li.append(k);
     if (e === selected) li.className = 'sel';
     if (e === selected && e.libraryAsset) li.append(metaList(e.libEntry.meta));
+    if (e === selected && e.splat) li.append(cleanPanel(e));
     li.onclick = () => { select(e); flyTo(e); };
     ol.insertBefore(li, ol.querySelector('li.err'));
   });
@@ -972,7 +985,7 @@ function pan(dx, dy) {
   camera.translateX(-dx * k); camera.translateY(dy * k);
 }
 dom.addEventListener('pointermove', e => {
-  if (!pointers.has(e.pointerId)) return;
+  if (!pointers.has(e.pointerId)) { if (erasing) brushAt = { x: e.clientX, y: e.clientY }; return; }
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (gesture && pointers.size >= 2) {
     const g = twoFinger();
@@ -1008,6 +1021,7 @@ dom.addEventListener('pointermove', e => {
 function pointerEnd(e) {
   pointers.delete(e.pointerId);
   if (drag && !drag.moved && drag.button === 0 && e.type === 'pointerup') {
+    if (erasing) { eraseClick(e.clientX, e.clientY); drag = null; pointers.delete(e.pointerId); return; }
     const ex = pick(e);
     select(ex);
     if (drag.touch) {
@@ -1021,7 +1035,7 @@ function pointerEnd(e) {
 }
 dom.addEventListener('pointerup', pointerEnd);
 dom.addEventListener('pointercancel', pointerEnd);
-dom.addEventListener('dblclick', e => { const ex = pick(e); if (ex) { select(ex); flyTo(ex); } });
+dom.addEventListener('dblclick', e => { if (erasing) return; const ex = pick(e); if (ex) { select(ex); flyTo(ex); } });
 dom.addEventListener('contextmenu', e => e.preventDefault());
 dom.addEventListener('wheel', e => {
   e.preventDefault(); stopTween();
@@ -1051,9 +1065,266 @@ function floorHit(e, y) {
   return p && p.distanceTo(camera.position) < 500 ? p : null;
 }
 
+// ---------- floaters ----------
+// Floaters: loose splats and small clouds hanging in the air around a capture. Two ways to hide them,
+// shown under the selected splat in the list:
+// - automatic (light / medium / strong): the splats are counted in small cubes. Splats with few neighbours,
+//   and small islands cut off from the rest, get opacity 0 and the detail levels are rebuilt without them.
+// - by hand (Erase, X): each click puts an erasing sphere on the splat under the cursor.
+// Both live in the file's own frame, so they hold whatever the exhibit's size and turn, and are saved and published.
+let HALF = null;
+function halfTable() {
+  if (HALF) return HALF;
+  HALF = new Float32Array(65536);
+  for (let h = 0; h < 65536; h++) {
+    const e = (h >> 10) & 31, f = h & 1023;
+    const v = e === 0 ? f * 2 ** -24 : e === 31 ? (f ? NaN : Infinity) : (1 + f / 1024) * 2 ** (e - 15);
+    HALF[h] = h & 0x8000 ? -v : v;
+  }
+  return HALF;
+}
+// every splat of the file: centre, opacity (0–255), largest radius; read once from Spark's packed splats
+function splatData(ex) {
+  if (ex.data) return ex.data;
+  const ps = ex.splat?.packedSplats;
+  if (!ps?.packedArray || !ps.numSplats) return null;
+  const n = ps.numSplats, a = ps.packedArray, H = halfTable(), enc = ps.splatEncoding || {};
+  const lnMin = enc.lnScaleMin ?? -12, k = ((enc.lnScaleMax ?? 9) - lnMin) / 254;
+  const pos = new Float32Array(n * 3), alpha = new Uint8Array(n), size = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const w0 = a[i * 4], w1 = a[i * 4 + 1], w2 = a[i * 4 + 2], w3 = a[i * 4 + 3];
+    pos[i * 3] = H[w1 & 0xffff]; pos[i * 3 + 1] = H[w1 >>> 16]; pos[i * 3 + 2] = H[w2 & 0xffff];
+    alpha[i] = w0 >>> 24;
+    const s = Math.max(w3 & 255, (w3 >>> 8) & 255, (w3 >>> 16) & 255);
+    size[i] = s ? Math.exp(lnMin + (s - 1) * k) : 0;
+  }
+  // size of the object itself (without the floaters): from percentiles of the centres
+  const every = Math.max(1, Math.floor(n / 50000)), ax = [[], [], []];
+  for (let i = 0; i < n; i += every) if (alpha[i] >= 77) for (let j = 0; j < 3; j++) ax[j].push(pos[i * 3 + j]);
+  const span = ax.map(a => { a.sort((x, y) => x - y); return a.length ? a[Math.floor(a.length * .98)] - a[Math.floor(a.length * .02)] : 1; });
+  return ex.data = { n, pos, alpha, size, extent: Math.max(...span, 1e-6) };
+}
+
+// sparse: hidden if its 3×3×3 cubes hold less than this share of what a typical splat has around it
+// island: a cut-off group with less than this share of all splats; big: splats wider than this × the typical one
+const CLEAN = { light: { sparse: .02, island: .0005 }, medium: { sparse: .05, island: .003 }, strong: { sparse: .1, island: .01, big: 12 } };
+function findFloaters(ex, level) {
+  const d = splatData(ex), P = CLEAN[level], { n, pos, alpha, size } = d;
+  const h = d.extent / 150; // cube size: relative to the object, whatever its units
+  const B = 131072, OFF = 65536, cl = v => v < 0 ? 0 : v >= B ? B - 1 : v;
+  const keyOf = (x, y, z) => (cl(Math.floor(x / h) + OFF) * B + cl(Math.floor(y / h) + OFF)) * B + cl(Math.floor(z / h) + OFF);
+  const vox = new Int32Array(n).fill(-1), ids = new Map(), keys = [], counts = [];
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 3) continue; // invisible anyway
+    const key = keyOf(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+    let v = ids.get(key);
+    if (v === undefined) { v = keys.length; ids.set(key, v); keys.push(key); counts.push(0); }
+    counts[v]++; vox[i] = v;
+  }
+  const V = keys.length, OFFS = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) OFFS.push((dx * B + dy) * B + dz);
+  const nb = new Float64Array(V);
+  for (let v = 0; v < V; v++) { let s = 0; for (const o of OFFS) { const u = ids.get(keys[v] + o); if (u !== undefined) s += counts[u]; } nb[v] = s; }
+  const every = Math.max(1, Math.floor(n / 100000)), nbs = [], sizes = [];
+  for (let i = 0; i < n; i += every) if (vox[i] >= 0) { nbs.push(nb[vox[i]]); sizes.push(size[i]); }
+  const med = a => a.sort((x, y) => x - y)[a.length >> 1] || 0;
+  const typical = med(nbs), typSize = med(sizes);
+  const drop = new Uint8Array(V);
+  for (let v = 0; v < V; v++) if (nb[v] < P.sparse * typical) drop[v] = 1;
+  // islands: groups of touching cubes (26 neighbours) among the rest; the largest always stays
+  const comp = new Int32Array(V).fill(-1), compSize = [];
+  let total = 0;
+  for (let v0 = 0; v0 < V; v0++) {
+    if (drop[v0] || comp[v0] >= 0) continue;
+    const id = compSize.length, stack = [v0];
+    comp[v0] = id; let sum = 0;
+    while (stack.length) {
+      const v = stack.pop(); sum += counts[v];
+      for (const o of OFFS) { const u = ids.get(keys[v] + o); if (u !== undefined && !drop[u] && comp[u] < 0) { comp[u] = id; stack.push(u); } }
+    }
+    compSize.push(sum); total += sum;
+  }
+  let largest = 0; for (let k = 1; k < compSize.length; k++) if (compSize[k] > compSize[largest]) largest = k;
+  for (let v = 0; v < V; v++) if (!drop[v] && comp[v] !== largest && compSize[comp[v]] < P.island * total) drop[v] = 1;
+  const big = P.big ? Math.max(d.extent / 30, P.big * typSize) : Infinity;
+  const removed = new Uint8Array(n);
+  let count = 0;
+  for (let i = 0; i < n; i++) if (vox[i] >= 0 && (drop[vox[i]] || size[i] > big)) { removed[i] = 1; count++; }
+  return { removed, count };
+}
+
+function setClean(ex, level) { ex.clean = level; scheduleClean(ex); if (ex === selected) renderList(); }
+function scheduleClean(ex) { clearTimeout(ex.cleanTimer); ex.cleanTimer = setTimeout(() => { ex.cleanChain = (ex.cleanChain || Promise.resolve()).then(() => runClean(ex)); }, 250); }
+// one at a time per exhibit: each rebuild of the detail levels replaces the one before
+async function runClean(ex) {
+  if (!exhibits.includes(ex)) return;
+  const splat = ex.splat, ps = splat?.packedSplats;
+  if (!ps?.packedArray) { status('Floaters cannot be taken out of this splat.'); setTimeout(() => status(''), 4000); return; }
+  const level = ex.clean;
+  if (ex.cleanDone?.splat === splat && ex.cleanDone.level === level) return; // nothing changed
+  if (!level && !ex.cleanDone) return; // never cleaned
+  ex.cleaning = true; if (ex === selected) renderList();
+  status(level ? `Looking for floaters in ${ex.name}…` : `Bringing back the floaters of ${ex.name}…`);
+  await new Promise(r => setTimeout(r, 30)); // let the message show before the work
+  try {
+    let rgbaArray = null, res = null;
+    if (level) {
+      res = findFloaters(ex, level);
+      const n = ps.numSplats, src = new Uint8Array(ps.packedArray.buffer, ps.packedArray.byteOffset, n * 16), rgba = new Uint8Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        rgba[i * 4] = src[i * 16]; rgba[i * 4 + 1] = src[i * 16 + 1]; rgba[i * 4 + 2] = src[i * 16 + 2];
+        rgba[i * 4 + 3] = res.removed[i] ? 0 : src[i * 16 + 3];
+      }
+      rgbaArray = new RgbaArray({ array: rgba, count: n });
+      status(`Hiding ${fmtN(res.count)} floaters in ${ex.name}: rebuilding the detail levels…`);
+    }
+    await ps.createLodSplats(rgbaArray ? { rgbaArray } : {});
+    if (ex.splat !== splat) return; // reloaded meanwhile
+    const old = splat.splatRgba;
+    splat.splatRgba = rgbaArray; // used when drawn without detail levels
+    old?.dispose?.();
+    splat.updateGenerator(); splat.updateVersion();
+    ex.cleanDone = { level, splat };
+    ex.cleanCount = res ? res.count : null;
+    ex.cleanRemoved = res ? res.removed : null;
+    refreshSamples(ex);
+  } catch (err) { console.error('floaters', err); status('Could not take out the floaters: ' + (err?.message || err)); setTimeout(() => status(''), 5000); return; }
+  finally { ex.cleaning = false; if (ex === selected) renderList(); }
+  status('');
+}
+
+// erasing by hand: spheres [x, y, z, radius] in the file's frame, hidden by an edit under the splat
+function setErase(ex, list) {
+  ex.erase = list.map(e => e.slice());
+  if (!ex.eraseEdit) {
+    ex.eraseEdit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0 });
+    ex.splat.add(ex.eraseEdit);
+  }
+  const edit = ex.eraseEdit;
+  while (edit.children.length) edit.remove(edit.children[0]);
+  for (const e of ex.erase) {
+    const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
+    sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
+  }
+  edit.visible = ex.erase.length > 0;
+  refreshSamples(ex);
+  if (ex === selected) renderList();
+}
+
+// size and floor of the exhibit come from its samples: take them from what is still shown,
+// so an exhibit framed by its floaters (e.g. the dome around a Scaniverse scan) fits the object itself
+function refreshSamples(ex) {
+  const d = splatData(ex); if (!d) return;
+  ex.samplesFile ??= ex.samples;
+  const rem = ex.cleanRemoved, E = ex.erase;
+  if (!rem && !E.length) ex.samples = ex.samplesFile;
+  else {
+    const { n, pos, alpha } = d, every = Math.max(1, Math.floor(n / MAX_SAMPLES)), out = [];
+    for (let i = 0; i < n; i += every) {
+      if (alpha[i] < 77 || (rem && rem[i])) continue;
+      const X = pos[i * 3], Y = pos[i * 3 + 1], Z = pos[i * 3 + 2];
+      if (E.some(e => (X - e[0]) ** 2 + (Y - e[1]) ** 2 + (Z - e[2]) ** 2 < e[3] * e[3])) continue;
+      out.push(X, -Y, -Z); // flipped to y up like the splat
+    }
+    if (out.length >= 150) ex.samples = new Float32Array(out);
+  }
+  ex.coreKey = undefined; ex.far = undefined;
+  layout();
+  if (ex === selected) updateSelection();
+}
+const eraseUndo = [];
+function undoErase() {
+  const u = eraseUndo.pop();
+  if (u && exhibits.includes(u.ex) && u.ex.splat) setErase(u.ex, u.erase);
+}
+
+let erasing = false, brushAt = null, brushR = .15;
+const brush = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), new THREE.MeshBasicMaterial({ color: 0xd9442b, wireframe: true, transparent: true, opacity: .55, depthTest: false }));
+brush.renderOrder = 999; brush.visible = false; brush.frustumCulled = false; scene.add(brush);
+function startErase() {
+  if (!selected?.splat) return;
+  if (!splatData(selected)) { status('This splat cannot be erased in.'); setTimeout(() => status(''), 4000); return; }
+  erasing = true; document.body.classList.add('erasing'); renderList();
+}
+function endErase() {
+  erasing = false; brush.visible = false; brushAt = null;
+  document.body.classList.remove('erasing'); renderList();
+}
+// the nearest visible splat under the cursor, among all splats of the exhibit (floaters are too few to be found otherwise)
+function pickSplat(ex, x, y) {
+  const d = splatData(ex); if (!d) return null;
+  ex.root.updateMatrixWorld(true);
+  ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -y / innerHeight * 2 + 1), camera);
+  const r0 = ray.ray.clone().applyMatrix4(ex.splat.matrixWorld.clone().invert()), o = r0.origin, dir = r0.direction;
+  const tanPx = 7 * 2 * Math.tan(camera.fov / 2 * Math.PI / 180) / innerHeight;
+  const rem = ex.cleanRemoved, E = ex.erase, { n, pos, alpha } = d;
+  let best = -1, bestT = Infinity;
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 25) continue;
+    const X = pos[i * 3], Y = pos[i * 3 + 1], Z = pos[i * 3 + 2];
+    const px = X - o.x, py = Y - o.y, pz = Z - o.z, t = px * dir.x + py * dir.y + pz * dir.z;
+    if (t <= 0 || t >= bestT) continue;
+    const r = t * tanPx;
+    if (px * px + py * py + pz * pz - t * t >= r * r) continue;
+    if (rem && rem[i]) continue;
+    let gone = false;
+    for (const e of E) if ((X - e[0]) ** 2 + (Y - e[1]) ** 2 + (Z - e[2]) ** 2 < e[3] * e[3]) { gone = true; break; }
+    if (gone) continue;
+    best = i; bestT = t;
+  }
+  if (best < 0) return null;
+  const local = new THREE.Vector3(pos[best * 3], pos[best * 3 + 1], pos[best * 3 + 2]);
+  return { local, world: ex.splat.localToWorld(local.clone()) };
+}
+const splatScale = ex => { ex.root.updateMatrixWorld(true); return ex.splat.matrixWorld.getMaxScaleOnAxis(); };
+function eraseClick(x, y) {
+  const ex = selected; if (!ex?.splat) return;
+  const hit = pickSplat(ex, x, y);
+  if (!hit) { status(`Nothing of ${ex.name} there.`); setTimeout(() => status(''), 1500); return; }
+  eraseUndo.push({ ex, erase: ex.erase.map(e => e.slice()) });
+  setErase(ex, [...ex.erase, [hit.local.x, hit.local.y, hit.local.z, brushR / splatScale(ex)]]); // metres in the room → the file's units
+  brushAt = { x, y };
+}
+function updateBrush() {
+  if (!selected?.splat || drag) { brush.visible = false; return; }
+  if (!brushAt) return; // the cursor did not move
+  const hit = pickSplat(selected, brushAt.x, brushAt.y); brushAt = null;
+  brush.visible = !!hit;
+  if (hit) { brush.position.copy(hit.world); brush.scale.setScalar(brushR); }
+}
+function resizeBrush(f) {
+  brushR = THREE.MathUtils.clamp(brushR * f, .01, 20);
+  brush.scale.setScalar(brushR);
+  const inp = document.querySelector('#list .clean input'); if (inp) inp.value = +brushR.toFixed(brushR < 1 ? 2 : 1);
+}
+dom.addEventListener('pointerleave', () => { brush.visible = false; brushAt = null; });
+
+// the controls under the selected splat in the list
+function cleanPanel(ex) {
+  const d = document.createElement('div'); d.className = 'clean';
+  const levels = ['', 'light', 'medium', 'strong'];
+  d.innerHTML = `<div class="row"><span title="Hide floaters: loose splats and small clouds hanging in the air, away from the object. The file is not changed">Floaters</span>
+    ${levels.map(l => `<button data-clean="${l}" class="${ex.clean === l ? 'on' : ''}">${l || 'keep'}</button>`).join('')}
+    <span class="n">${ex.cleaning ? 'looking…' : ex.clean && ex.cleanCount != null ? fmtN(ex.cleanCount) + ' hidden' : ''}</span></div>
+    <div class="row"><button class="er ${erasing ? 'on' : ''}" title="X: click floaters to erase them by hand">Erase</button>
+    <span title="Radius of the eraser in metres ([ and ] while erasing)">brush m</span><input type="number" step="0.05" min="0.01" value="${+brushR.toFixed(brushR < 1 ? 2 : 1)}">
+    <button class="clr" ${ex.erase.length ? '' : 'disabled'} title="Bring back everything erased by hand">Clear${ex.erase.length ? ' ' + ex.erase.length : ''}</button></div>
+    ${erasing ? '<div class="tip">Click on floaters to erase them · [ ] brush size · ⌘Z undoes · Esc or X ends</div>' : ''}`;
+  d.onclick = e => e.stopPropagation(); // not a click on the list item (that flies to the exhibit)
+  d.querySelectorAll('[data-clean]').forEach(b => b.onclick = e => { e.stopPropagation(); setClean(ex, b.dataset.clean); });
+  d.querySelector('.er').onclick = e => { e.stopPropagation(); erasing ? endErase() : startErase(); };
+  d.querySelector('.clr').onclick = e => { e.stopPropagation(); eraseUndo.push({ ex, erase: ex.erase.map(e => e.slice()) }); setErase(ex, []); };
+  const inp = d.querySelector('input');
+  inp.oninput = () => { const v = parseFloat(inp.value); if (isFinite(v) && v > 0) { brushR = v; brush.scale.setScalar(v); } };
+  return d;
+}
+Object.assign(window.exhibition, { splatData, findFloaters }); // for testing from the console
+
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && eraseUndo.length) { e.preventDefault(); undoErase(); return; }
   if (e.metaKey || e.ctrlKey) return;
+  if (e.target.closest?.('#list input')) { if (e.key === 'Escape') e.target.blur(); return; } // typing the brush size
   if (e.target.closest?.('#library, #publish')) { if (e.key === 'Escape') { toggleLibrary(false); togglePublish(false); } return; } // typing
   const k = e.key.toLowerCase();
   keys.add(k); if (e.shiftKey) keys.add('shift');
@@ -1076,10 +1347,11 @@ addEventListener('keydown', e => {
     case 'r': rotate(new THREE.Vector3(0, 1, 0), Math.PI / 2); break;
     case 't': rotate(new THREE.Vector3(1, 0, 0), -Math.PI / 2); break;
     case 'f': rotate(new THREE.Vector3(0, 0, 1), Math.PI); break;
-    case '[': if (!selected.libraryAsset) { selected.userScale /= 1.25; layout(); } break; // library assets keep real scale
-    case ']': if (!selected.libraryAsset) { selected.userScale *= 1.25; layout(); } break;
+    case 'x': if (selected.splat) erasing ? endErase() : startErase(); break;
+    case '[': if (erasing) { resizeBrush(1 / 1.25); break; } if (!selected.libraryAsset) { selected.userScale /= 1.25; layout(); } break; // library assets keep real scale
+    case ']': if (erasing) { resizeBrush(1.25); break; } if (!selected.libraryAsset) { selected.userScale *= 1.25; layout(); } break;
     case 'delete': case 'backspace': removeExhibit(selected); break;
-    case 'escape': select(null); break;
+    case 'escape': if (erasing) endErase(); else select(null); break;
     case 'arrowup': case 'arrowdown':
       selected.lift += (k === 'arrowup' ? 1 : -1) * (e.shiftKey ? .1 : .01); layout(); e.preventDefault(); break;
     case 'g': selected.lift = 0; layout(); break;
@@ -1338,6 +1610,7 @@ async function sceneState(name) {
     const sidecars = ex.byName ? [...new Set(ex.byName.values())].filter(f => f !== ex.file && !MAIN_EXT.includes(ext(f.name))) : [];
     scene.exhibits.push({ name: ex.name, file: add(ex.file), sidecars: sidecars.map(add),
       quaternion: ex.pivot.quaternion.toArray(), userScale: ex.userScale, lift: ex.lift,
+      ...(ex.splat && { floaters: ex.clean || null, erase: ex.erase.map(e => e.map(v => +v.toFixed(4))) }),
       ...(ex.libraryAsset && { position: ex.root.position.toArray(),
         library: { name: ex.libEntry.name, file: ex.libEntry.file, group: ex.libEntry.group, meta: ex.libEntry.meta } }) });
   }
@@ -1460,6 +1733,8 @@ async function openExhibition(src) {
         ex.file = file;
         ex.pivot.quaternion.fromArray(e.quaternion || [0, 0, 0, 1]);
         ex.userScale = e.userScale ?? 1; ex.lift = e.lift ?? 0;
+        if (ex.splat && Array.isArray(e.erase) && e.erase.length) setErase(ex, e.erase.filter(a => Array.isArray(a) && a.length === 4 && a.every(isFinite)));
+        if (ex.splat && e.floaters && CLEAN[e.floaters]) setClean(ex, e.floaters);
         layout();
       } catch (err) {
         console.error(e.name, err);
@@ -1931,6 +2206,7 @@ renderer.setAnimationLoop(() => {
   if ((detailClock += dt) > .25) { detailClock = 0; updateDetail(); }
   renderer.render(scene, camera);
   snapRequest?.();
+  if (erasing) updateBrush();
 });
 </script>
 </body>

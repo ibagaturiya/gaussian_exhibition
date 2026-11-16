@@ -8,6 +8,8 @@ Supported files: `.ply` `.splat` `.ksplat` `.spz` · `.glb` `.gltf` `.obj` (+`.m
 
 Drop, paste (⌘V / Ctrl+V) or choose files. On phones and tablets: one finger orbits, pinch flies in and out, twist rotates, double-tap flies to a model. The Paste button next to + Add loads a copied link to a model file (phones only let web pages paste links, not files).
 
+**Floaters:** select a splat and its row in the Exhibition list shows *Floaters: keep / light / medium / strong* (hides loose splats and small cut-off clouds automatically, e.g. the dome of sky around a Scaniverse scan, and fits the exhibit to what is left) and **Erase** (X): click on floaters to hide everything within the brush (`brush m`, `[` `]` while erasing, ⌘Z undoes, *Clear* brings it back). The files are not changed; both are saved and published with the exhibition.
+
 **Library:** prepared GLB assets (plinths, lamps, …) listed in `library/index.json` can be placed from the Library button, at real scale. Each collection has a `library/<collection>/manifest.json`:
 
 ```json
