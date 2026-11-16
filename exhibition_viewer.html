@@ -9,101 +9,152 @@
 <title>Scan Exhibition</title>
 <style>
   :root {
-    --bg: #1b1b1a; --fg: #e8e6e1; --muted: #8d8a83; --line: #3a3936;
-    --panel: rgba(27,27,26,.82); --accent: #d9442b;
+    --bg: #141416; --fg: #f2f1ee; --muted: rgba(235,235,245,.58); --line: rgba(255,255,255,.12);
+    --glass: rgba(30,30,34,.52); --glass-hi: rgba(255,255,255,.07); --edge: rgba(255,255,255,.13);
+    --btn: rgba(255,255,255,.07); --btn-hover: rgba(255,255,255,.14); --accent: #ff5b3d; --accent-soft: rgba(255,91,61,.18);
+    --shadow: 0 12px 40px rgba(0,0,0,.38);
+    --panel: var(--glass);
   }
   :root[data-theme="light"] {
-    --bg: #eeece7; --fg: #1d1d1b; --muted: #6f6c66; --line: #cfccc4;
-    --panel: rgba(238,236,231,.86); --accent: #c23a22;
+    --bg: #ecebe7; --fg: #1c1c1e; --muted: rgba(60,60,67,.62); --line: rgba(0,0,0,.1);
+    --glass: rgba(255,255,255,.58); --glass-hi: rgba(255,255,255,.7); --edge: rgba(0,0,0,.08);
+    --btn: rgba(0,0,0,.05); --btn-hover: rgba(0,0,0,.1); --accent: #e0442a; --accent-soft: rgba(224,68,42,.13);
+    --shadow: 0 12px 36px rgba(0,0,0,.14);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
-    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   canvas { display: block; touch-action: none; }
-  .ui { position: fixed; background: var(--panel); backdrop-filter: blur(6px);
-    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
-  #list { top: 16px; left: 16px; max-width: min(320px, calc(100vw - 32px)); max-height: 45vh; overflow: auto; }
-  #list h1 { font-size: 13px; font-weight: 600; margin: 0 0 6px; letter-spacing: .02em; }
-  #list ol { margin: 0; padding-left: 20px; }
-  #list li { cursor: pointer; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #list li.sel { color: var(--accent); }
-  #list li .k { color: var(--muted); font-size: 11px; margin-left: 4px; }
-  #list li.err { color: var(--muted); text-decoration: line-through; }
-  #help { bottom: 16px; left: 16px; color: var(--muted); max-width: calc(100vw - 32px); }
-  #help b { color: var(--fg); font-weight: 600; }
-  #help table { border-collapse: collapse; }
-  #help td { padding: 0 10px 0 0; vertical-align: top; }
-  #version { position: fixed; top: 4px; right: 18px; font-size: 10px; color: var(--muted); letter-spacing: .02em; pointer-events: none; }
-  #version a { color: inherit; pointer-events: auto; }
-  #bar { top: 20px; right: 16px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; padding: 6px; }
-  button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
-    border-radius: 4px; padding: 4px 9px; cursor: pointer; }
-  button:hover { border-color: var(--fg); }
-  button.on { border-color: var(--accent); color: var(--accent); }
-  #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
-  #empty div { text-align: center; color: var(--muted); pointer-events: auto; padding: 16px; }
-  #empty strong { display: block; color: var(--fg); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
-  #notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
-  #notice > div { max-width: 420px; text-align: center; color: var(--muted); padding: 22px 24px; }
-  #notice strong { display: block; color: var(--fg); font-size: 20px; font-weight: 500; margin-bottom: 8px; }
-  #notice button { margin-top: 16px; }
-  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: none; pointer-events: none; }
-  body.dragging #drop { display: block; }
-  #status { top: 16px; left: 50%; transform: translateX(-50%); display: none; color: var(--muted); }
-  #detail { bottom: 16px; right: 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; width: min(320px, calc(100vw - 32px)); }
-  #detail label { color: var(--muted); }
-  #detail input[type=range] { width: 100%; accent-color: var(--accent); }
-  #detail output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
-  #detail .seg { grid-column: 2 / 4; display: flex; gap: 4px; }
-  #detail .seg button { flex: 1; padding: 2px 6px; }
   .hidden { display: none !important; }
-  #touchbar { bottom: 16px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; padding: 6px; }
-  #touchbar button { min-width: 44px; min-height: 40px; font-size: 15px; }
-  .fold { cursor: pointer; user-select: none; }
-  .fold::after { content: ' ▾'; color: var(--muted); }
-  .folded .fold::after { content: ' ▸'; }
-  #list.folded ol, #detail.folded > :not(.fold) { display: none; }
-  #detail .fold { grid-column: 1 / -1; font-weight: 600; margin: 0; font-size: 13px; }
-  #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 2px 0 4px; white-space: normal;
-    color: var(--muted); font-size: 11px; }
+
+  /* glass panels */
+  .ui { position: fixed; background: var(--glass); border: 1px solid var(--edge); border-radius: 16px; padding: 10px;
+    backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--glass-hi); }
+  button { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 10px;
+    padding: 6px 12px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; white-space: nowrap; }
+  button:hover { background: var(--btn-hover); }
+  button.on { background: var(--accent-soft); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.icon { padding: 6px 10px; min-width: 34px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .note { color: var(--muted); font-size: 11px; }
+
+  /* switch */
+  .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch .track { width: 34px; height: 20px; border-radius: 10px; background: var(--btn-hover); position: relative; transition: background .2s; flex: none; }
+  .switch .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s; }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(14px); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* toolbar */
+  #bar { top: 14px; right: 14px; display: flex; gap: 4px; align-items: center; padding: 5px; border-radius: 14px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 28px); }
+  #bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 4px; }
+  #floatSwitch { padding: 4px 8px 4px 6px; border-radius: 10px; }
+  #floatSwitch .lbl { font-weight: 500; }
+  #floatSwitch .prog { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+  /* exhibition list (main window) */
+  #list { top: 14px; left: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 28px); display: flex; flex-direction: column; padding: 6px; }
+  .phead { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; user-select: none; border-radius: 10px; }
+  .phead:hover { background: var(--btn); }
+  .phead h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; letter-spacing: .01em; }
+  .phead .count { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
+  .chev { color: var(--muted); transition: transform .2s; font-size: 11px; }
+  .folded .chev { transform: rotate(-90deg); }
+  #list ol { margin: 4px 0 0; padding: 0; list-style: none; overflow: auto; min-height: 0; counter-reset: ex; }
+  #list.folded ol { display: none; }
+  #list li { counter-increment: ex; cursor: pointer; padding: 6px 8px 6px 34px; border-radius: 10px; position: relative;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #list li::before { content: counter(ex, decimal-leading-zero); position: absolute; left: 9px; top: 7px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #list li:hover { background: var(--btn); }
+  #list li.sel { background: var(--accent-soft); color: var(--accent); }
+  #list li .k { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  #list li.err { color: var(--muted); text-decoration: line-through; }
+  #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 2px; white-space: normal; color: var(--muted); font-size: 11px; }
   #list li .meta span:nth-child(odd) { color: var(--fg); }
-  #list li .clean { white-space: normal; margin: 4px 0 6px; cursor: default; color: var(--muted); font-size: 11px; }
-  #list li .clean .row { display: flex; gap: 4px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
-  #list li .clean button { padding: 0 6px; font-size: 11px; }
-  #list li .clean input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; width: 4.5em; }
-  #list li .clean .tip { color: var(--accent); margin-top: 3px; }
+  #list li .clean { white-space: normal; margin: 6px 0 2px; cursor: default; color: var(--muted); font-size: 11px; }
+  #list li .clean .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #list li .clean button { padding: 3px 9px; font-size: 11px; }
+  #list li .clean input { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 8px; padding: 3px 6px; width: 4.5em; }
+  #list li .clean .tip { color: var(--accent); margin-top: 4px; }
   body.erasing canvas { cursor: crosshair; }
-  #library, #publish { top: 66px; right: 16px; width: min(320px, calc(100vw - 32px)); max-height: calc(100vh - 82px);
-    display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+
+  /* settings menu */
+  #detail { top: 66px; right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; padding: 6px; z-index: 2; }
+  #detail.folded { display: none; }
+  #detail details { border-radius: 12px; }
+  #detail details + details { margin-top: 2px; }
+  #detail summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; border-radius: 10px; font-weight: 600; user-select: none; }
+  #detail summary::-webkit-details-marker { display: none; }
+  #detail summary:hover { background: var(--btn); }
+  #detail summary::after { content: '›'; margin-left: auto; color: var(--muted); transition: transform .2s; font-size: 15px; line-height: 1; }
+  #detail details[open] > summary::after { transform: rotate(90deg); }
+  #detail summary .ic { width: 18px; text-align: center; color: var(--muted); font-weight: 400; }
+  #detail .body { display: grid; grid-template-columns: 84px 1fr auto; gap: 8px 10px; align-items: center; padding: 4px 10px 12px; }
+  #detail .body > label, #detail .body > .lbl { color: var(--muted); }
+  #detail .body .wide { grid-column: 1 / -1; }
+  #detail output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--muted); }
+  #detail .seg { grid-column: 2 / 4; display: flex; gap: 2px; background: var(--btn); border-radius: 10px; padding: 2px; }
+  #detail .seg button { flex: 1; padding: 4px 6px; background: transparent; border-radius: 8px; }
+  #detail .seg button.on { background: var(--glass-hi); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  :root[data-theme="light"] #detail .seg button.on { background: #fff; }
+  #detail .seg button:hover:not(.on) { background: var(--btn-hover); }
+  #help table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  #help td { padding: 2px 8px 2px 0; vertical-align: top; color: var(--muted); }
+  #help b { color: var(--fg); font-weight: 600; white-space: nowrap; }
+  #version { font-size: 10px; color: var(--muted); padding: 8px 10px 4px; }
+  #version a { color: inherit; }
+
+  #status { top: 14px; left: 50%; transform: translateX(-50%); display: none; color: var(--fg); padding: 8px 14px; border-radius: 12px; max-width: calc(100vw - 28px); }
+  #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  #empty > div { text-align: center; color: var(--muted); pointer-events: auto; padding: 28px 32px; border-radius: 20px; background: var(--glass);
+    border: 1px solid var(--edge); backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7); box-shadow: var(--shadow); max-width: min(520px, calc(100vw - 28px)); }
+  #empty strong { display: block; color: var(--fg); font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  #empty #pick { margin-top: 14px; background: var(--accent); color: #fff; padding: 8px 18px; }
+  #notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+  #notice > div { position: static; max-width: 420px; text-align: center; color: var(--muted); padding: 22px 24px; }
+  #notice strong { display: block; color: var(--fg); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  #notice button { margin-top: 16px; }
+  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 18px; display: none; pointer-events: none; background: var(--accent-soft); }
+  body.dragging #drop { display: block; }
+  #touchbar { bottom: 14px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; padding: 6px; }
+  #touchbar button { min-width: 44px; min-height: 40px; font-size: 15px; }
+
+  #library, #publish { top: 66px; right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 80px);
+    display: flex; flex-direction: column; gap: 8px; z-index: 2; padding: 12px; }
   #library header, #publish header { display: flex; align-items: center; gap: 6px; }
   #library header h1, #publish header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
-  #library header button, #publish header button { padding: 0 7px; }
-  #library select, #library input, #publish select, #publish input { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line);
-    border-radius: 4px; padding: 3px 6px; width: 100%; }
+  #library header button, #publish header button { padding: 2px 9px; }
+  #library select, #library input, #publish select, #publish input { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent;
+    border-radius: 10px; padding: 6px 8px; width: 100%; }
   #library select option, #publish select option { color: #1d1d1b; }
-  #publish label { color: var(--muted); display: grid; gap: 3px; }
+  #publish label { color: var(--muted); display: grid; gap: 4px; }
   #publish .row { display: flex; gap: 6px; }
-  #publish .note { color: var(--muted); font-size: 11px; }
   #publish a { color: var(--muted); }
-  #publish h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 0; }
+  #publish h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 10px 0 0; }
   #publish .used { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
   #pubUsed { height: 100%; width: 0; background: var(--accent); }
   #pubShows { overflow: auto; min-height: 0; display: grid; gap: 8px; }
   #pubShows .show { display: flex; gap: 8px; align-items: flex-start; }
   #pubShows .show.ended { opacity: .5; }
-  #pubShows .thumb { width: 64px; height: 40px; flex: none; border-radius: 3px; background: var(--line) center / cover; }
+  #pubShows .thumb { width: 64px; height: 40px; flex: none; border-radius: 6px; background: var(--line) center / cover; }
   #pubShows .info { min-width: 0; display: grid; gap: 1px; }
   #pubShows .info b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pubShows .info > span { color: var(--muted); font-size: 11px; }
   #pubShows .acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
-  #pubShows .acts button { padding: 1px 7px; font-size: 11px; }
+  #pubShows .acts button { padding: 2px 8px; font-size: 11px; }
   #pubShows .acts button.del { min-width: 7.5em; } /* same size when it asks "Really delete?", so the second click hits it */
   #pubShows .acts a { font-size: 11px; }
   #libItems { overflow: auto; min-height: 0; }
-  #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
-  #libItems .item { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
-  #libItems .item:hover { background: var(--line); }
-  #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 3px; flex: none; background: var(--line); }
+  #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 2px; }
+  #libItems .item { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 10px; cursor: pointer; }
+  #libItems .item:hover { background: var(--btn-hover); }
+  #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; background: var(--line); }
   #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #libItems .note { color: var(--muted); padding: 4px 0; }
   body:not(.has-exhibits) #bSave { display: none; }
@@ -116,15 +167,11 @@
     .desk-only { display: none; }
   }
   @media (max-width: 640px) {
-    #help { display: none; }
     body { font-size: 14px; }
-    .ui { padding: 8px 10px; }
-    #list { top: 66px; left: 10px; max-width: calc(100vw - 20px); max-height: 35vh; }
-    #bar { top: 16px; right: 10px; left: 10px; justify-content: flex-start; }
+    #bar { top: 10px; right: 10px; left: 10px; justify-content: flex-start; }
     #bar button { min-height: 34px; }
-    #detail { right: 10px; bottom: 76px; width: min(300px, calc(100vw - 20px)); }
-    #version { right: 10px; }
-    #library, #publish { right: 10px; width: calc(100vw - 20px); max-height: 55vh; }
+    #list { top: 66px; left: 10px; width: calc(100vw - 20px); max-height: 38vh; }
+    #detail, #library, #publish { right: 10px; width: calc(100vw - 20px); max-height: 60vh; }
   }
 </style>
 <script>
@@ -223,54 +270,69 @@
 <div id="notice" class="hidden"><div class="ui"><strong id="noticeTitle"></strong><span id="noticeText"></span><br>
   <button id="noticeOk">Open the viewer empty</button></div></div>
 
-<div id="list" class="ui hidden"><h1 class="fold">Exhibition</h1><ol></ol></div>
+<div id="list" class="ui hidden">
+  <div class="phead fold"><h1>Exhibition<span class="count" id="exCount"></span></h1><span class="chev">▾</span></div>
+  <ol></ol>
+</div>
 
-<div id="version"><span id="versionText">v0.14 · 29.09.2026 15:12</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
-<script>
-// date follows the file itself, so it stays right after every edit
-(() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
-  const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.14 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
-</script>
 <div id="bar" class="ui">
   <button id="bAdd" title="Add files">+ Add</button>
   <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
   <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
   <button id="bPublish" title="Put the exhibition online for a few days and get a link to share; see what is online">Publish</button>
-  <button id="bScale" class="on" title="U: uniform size vs. original units">Uniform size</button>
-  <button id="bFloat" class="on" title="Shift+X: hide (on) or show again every floater taken out or erased, in all splats, to compare. The settings stay">Floaters hidden</button>
-  <button id="bTheme" title="B">Light</button>
-  <button id="bHelp" title="H">?</button>
+  <span class="sep"></span>
+  <label id="floatSwitch" class="switch" title="Shift+X: take the floaters out of every splat (loose splats, the sky dome around a scan), or show the scans as they are">
+    <input type="checkbox" id="floatOn"><span class="track"></span><span class="lbl">Remove floaters</span><span class="prog" id="floatProg"></span></label>
+  <span class="sep"></span>
+  <button id="bMenu" class="icon" title="Settings (H: keys)" aria-label="settings">☰</button>
 </div>
-
-<div id="help" class="ui"><table>
-  <tr><td><b>Left-drag</b></td><td>orbit around object</td><td><b>Click</b></td><td>select exhibit</td></tr>
-  <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Double-click</b></td><td>fly to exhibit</td></tr>
-  <tr><td><b>Middle-drag</b></td><td>pan</td><td><b>N / P</b></td><td>next / previous exhibit</td></tr>
-  <tr><td><b>W A S D</b></td><td>fly</td><td><b>R</b></td><td>turn selected 90°</td></tr>
-  <tr><td><b>Q / E</b></td><td>up / down</td><td><b>T / F</b></td><td>tip 90° / flip upside-down</td></tr>
-  <tr><td><b>1 / 2</b></td><td>slower / faster</td><td><b>[ ]</b></td><td>smaller / larger</td></tr>
-  <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove selected</td></tr>
-  <tr><td><b>X / Shift+X</b></td><td>erase floaters of the selected splat / show all floaters</td><td><b>[ ] </b>while erasing</td><td>smaller / larger eraser</td></tr>
-  <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower selected (Shift ×10)</td></tr>
-  <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>put selected back on the floor</td></tr>
-  <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move selected library asset</td></tr>
-</table></div>
 
 <div id="status" class="ui"></div>
-<div id="detail" class="ui">
-  <h1 class="fold">Settings</h1>
-  <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
-  <label>Beyond</label><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
-  <label for="budget" title="Point clouds and splats with more points are thinned while loading. Moving the slider reloads them.">Import</label><input id="budget" type="range" min="0" max="100" value="50"><output id="budgetOut"></output>
-  <label for="ptSize" title="Point clouds only; splats and meshes are not affected">Points</label><input id="ptSize" type="range" min="-100" max="100" value="0"><output id="ptSizeOut">×1</output>
-  <label>Shape</label><div class="seg"><button id="shSquare" class="on">square</button><button id="shCircle">circle</button></div>
-  <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
-  <label for="titles">Titles</label><input id="titles" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span></span>
-  <label for="lights" class="lib-only hidden" title="Lights of library assets that ask for one in their manifest">Lights</label><input id="lights" class="lib-only hidden" type="checkbox" checked style="justify-self: start; accent-color: var(--accent)"><span class="lib-only hidden"></span>
-  <label>Speed</label><span id="speedOut" style="grid-column: 2 / 4">×1</span>
+<div id="detail" class="ui folded">
+  <details open><summary><span class="ic">✦</span>Floaters</summary><div class="body">
+    <span class="lbl">Remove</span><label class="switch" style="grid-column: 2 / 4"><input type="checkbox" id="floatOn2"><span class="track"></span><span class="note" id="floatNote"></span></label>
+    <span class="lbl">Strength</span><div class="seg"><button data-level="light">light</button><button data-level="medium" class="on">medium</button><button data-level="strong">strong</button></div>
+    <div class="wide note">Takes loose splats and small cut-off clouds out of every splat, e.g. the sky dome around a Scaniverse scan, and fits each exhibit to what is left. To erase more by hand: select a splat, then <b>Erase</b> in its row (X).</div>
+  </div></details>
+  <details><summary><span class="ic">◐</span>View</summary><div class="body">
+    <span class="lbl">Size</span><button id="bScale" class="on" style="grid-column: 2 / 4" title="U: uniform size vs. original units">Uniform size</button>
+    <span class="lbl">Theme</span><button id="bTheme" style="grid-column: 2 / 4" title="B">Light</button>
+    <label for="gap">Spacing</label><input id="gap" type="range" min="0" max="20" step=".25" value="2.5"><output id="gapOut">2.5 m</output>
+    <label for="titles">Titles</label><label class="switch" style="grid-column: 2 / 4"><input id="titles" type="checkbox" checked><span class="track"></span></label>
+    <label for="lights" class="lib-only hidden" title="Lights of library assets that ask for one in their manifest">Lights</label><label class="switch lib-only hidden" style="grid-column: 2 / 4"><input id="lights" type="checkbox" checked><span class="track"></span></label>
+    <span class="lbl">Speed</span><span id="speedOut" style="grid-column: 2 / 4">×1</span>
+  </div></details>
+  <details><summary><span class="ic">◎</span>Detail</summary><div class="body">
+    <label for="radius">Full detail</label><input id="radius" type="range" min="0" max="100" value="45"><output id="radiusOut"></output>
+    <span class="lbl">Beyond</span><div class="seg"><button id="mSimplify" class="on">simplify</button><button id="mHide">hide</button></div>
+    <label for="budget" title="Point clouds and splats with more points are thinned while loading. Moving the slider reloads them.">Import</label><input id="budget" type="range" min="0" max="100" value="50"><output id="budgetOut"></output>
+  </div></details>
+  <details><summary><span class="ic">⁘</span>Points</summary><div class="body">
+    <label for="ptSize" title="Point clouds only; splats and meshes are not affected">Size</label><input id="ptSize" type="range" min="-100" max="100" value="0"><output id="ptSizeOut">×1</output>
+    <span class="lbl">Shape</span><div class="seg"><button id="shSquare" class="on">square</button><button id="shCircle">circle</button></div>
+  </div></details>
+  <details id="keys"><summary><span class="ic">⌘</span>Keys</summary><div class="body"><div class="wide" id="help"><table>
+    <tr><td><b>Left-drag</b></td><td>orbit</td><td><b>Click</b></td><td>select</td></tr>
+    <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Dbl-click</b></td><td>fly to exhibit</td></tr>
+    <tr><td><b>Middle-drag</b></td><td>pan</td><td><b>N / P</b></td><td>next / previous</td></tr>
+    <tr><td><b>W A S D</b></td><td>fly</td><td><b>R</b></td><td>turn 90°</td></tr>
+    <tr><td><b>Q / E</b></td><td>up / down</td><td><b>T / F</b></td><td>tip / flip</td></tr>
+    <tr><td><b>1 / 2</b></td><td>slower / faster</td><td><b>[ ]</b></td><td>smaller / larger</td></tr>
+    <tr><td><b>Shift</b></td><td>boost ×3</td><td><b>Del</b></td><td>remove</td></tr>
+    <tr><td><b>Wheel</b></td><td>move forward</td><td><b>↑ / ↓</b></td><td>raise / lower</td></tr>
+    <tr><td><b>O</b></td><td>overview</td><td><b>G</b></td><td>back on the floor</td></tr>
+    <tr><td><b>Shift+X</b></td><td>floaters on / off</td><td><b>X</b></td><td>erase by hand</td></tr>
+    <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move library asset</td></tr>
+  </table></div></div></details>
+  <div id="version"><span id="versionText">v0.15</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
 </div>
+<script>
+// date follows the file itself, so it stays right after every edit
+(() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
+  const p = n => String(n).padStart(2, '0');
+  document.getElementById('versionText').textContent = `v0.15 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+</script>
 <div id="touchbar" class="ui">
   <button id="tPrev" aria-label="previous exhibit">‹</button>
   <button id="tOverview">overview</button>
@@ -622,9 +684,9 @@ function reimport() {
           total: fresh.total, stride: fresh.stride, coreKey: undefined, core: undefined, far: undefined });
         ex.pivot.add(ex.content);
         // the new splat starts clean: put the floater settings back on it
-        Object.assign(ex, { data: null, eraseEdit: null, cleanDone: null, cleanCount: null, cleanRemoved: null, samplesFile: undefined, lodOrig: undefined, lodClean: null, rgbaClean: null });
+        Object.assign(ex, { data: null, eraseEdit: null, cache: null, cleanCount: null, cleanRemoved: null, samplesFile: undefined, lodOrig: undefined });
         if (ex.splat && ex.erase.length) setErase(ex, ex.erase);
-        if (ex.splat && ex.clean) scheduleClean(ex);
+        if (ex.splat && floatersOn) queueClean(ex);
         layout(); renderList();
       } catch (err) { console.error(ex.name, err); }
     }
@@ -797,10 +859,11 @@ function addExhibit(data) {
   const root = new THREE.Group();
   const pivot = new THREE.Group();
   pivot.add(data.content); root.add(pivot); scene.add(root);
-  const ex = { ...data, root, pivot, userScale: 1, lift: 0, clean: '', erase: [] };
+  const ex = { ...data, root, pivot, userScale: 1, lift: 0, erase: [] };
   exhibits.push(ex);
   drawLabel(ex);
   renderList();
+  if (ex.splat && floatersOn) queueClean(ex);
 }
 
 function drawLabel(ex) {
@@ -896,6 +959,7 @@ function renderList() {
     li.onclick = () => { select(e); flyTo(e); };
     ol.insertBefore(li, ol.querySelector('li.err'));
   });
+  $('#exCount').textContent = exhibits.length ? String(exhibits.length) : '';
 }
 
 // ---------- camera: fly controls ----------
@@ -1154,40 +1218,51 @@ function findFloaters(ex, level) {
   return { removed, count };
 }
 
-function setClean(ex, level) { ex.clean = level; scheduleClean(ex); if (ex === selected) renderList(); }
-function scheduleClean(ex) { clearTimeout(ex.cleanTimer); ex.cleanTimer = setTimeout(() => { ex.cleanChain = (ex.cleanChain || Promise.resolve()).then(() => runClean(ex)); }, 250); }
-// one at a time per exhibit: each rebuild of the detail levels replaces the one before
+// The Floaters switch works on every splat: on = floaters taken out (at the chosen strength), off = the scans as they are.
+// Each splat keeps the file's own detail levels next to its cleaned ones, so switching back and forth is instant;
+// only the first time a splat is cleaned at a strength takes a few seconds, one splat after the other.
+const FLOATER_KEY = 'exhibition.floaters';
+const floaterPref = (() => { try { return JSON.parse(localStorage.getItem(FLOATER_KEY)) || {}; } catch { return {}; } })();
+let floatersOn = floaterPref.on ?? true, floaterLevel = CLEAN[floaterPref.level] ? floaterPref.level : 'medium';
+let cleanChain = Promise.resolve(), cleanPending = 0;
+const cachedClean = ex => floatersOn && ex.cache?.splat === ex.splat && ex.cache.level === floaterLevel ? ex.cache : null;
+function queueClean(ex) {
+  if (!ex.splat || ex.queued) return;
+  ex.queued = true; cleanPending++; updateFloatUI();
+  cleanChain = cleanChain.then(() => runClean(ex)).finally(() => { cleanPending--; updateFloatUI(); });
+}
 async function runClean(ex) {
+  ex.queued = false;
   if (!exhibits.includes(ex)) return;
   const splat = ex.splat, ps = splat?.packedSplats;
-  if (!ps?.packedArray) { status('Floaters cannot be taken out of this splat.'); setTimeout(() => status(''), 4000); return; }
-  const level = ex.clean;
-  if (ex.cleanDone?.splat === splat && ex.cleanDone.level === level) return; // nothing changed
-  if (!level && !ex.cleanDone) return; // never cleaned
-  ex.cleaning = true; if (ex === selected) renderList();
-  status(level ? `Looking for floaters in ${ex.name}…` : `Bringing back the floaters of ${ex.name}…`);
-  await new Promise(r => setTimeout(r, 30)); // let the message show before the work
-  try {
-    let rgbaArray = null, res = null;
-    if (level) {
-      res = findFloaters(ex, level);
+  if (!ps?.packedArray) return; // e.g. a splat from an older save without its full detail: shown as it is
+  const level = floaterLevel;
+  if (floatersOn && !cachedClean(ex)) {
+    ex.cleaning = true; if (ex === selected) renderList();
+    status(`Removing floaters: ${ex.name}${cleanPending > 1 ? ` (${cleanPending - 1} more after this)` : ''}`);
+    await new Promise(r => setTimeout(r, 30)); // let the message show before the work
+    try {
+      const res = findFloaters(ex, level);
       const n = ps.numSplats, src = new Uint8Array(ps.packedArray.buffer, ps.packedArray.byteOffset, n * 16), rgba = new Uint8Array(n * 4);
       for (let i = 0; i < n; i++) {
         rgba[i * 4] = src[i * 16]; rgba[i * 4 + 1] = src[i * 16 + 1]; rgba[i * 4 + 2] = src[i * 16 + 2];
         rgba[i * 4 + 3] = res.removed[i] ? 0 : src[i * 16 + 3];
       }
-      rgbaArray = new RgbaArray({ array: rgba, count: n });
-      status(`Hiding ${fmtN(res.count)} floaters in ${ex.name}: rebuilding the detail levels…`);
-    }
-    await buildClean(ex, rgbaArray);
-    if (ex.splat !== splat) return; // reloaded meanwhile
-    ex.cleanDone = { level, splat };
-    ex.cleanCount = res ? res.count : null;
-    ex.cleanRemoved = res ? res.removed : null;
-    refreshSamples(ex);
-  } catch (err) { console.error('floaters', err); status('Could not take out the floaters: ' + (err?.message || err)); setTimeout(() => status(''), 5000); return; }
-  finally { ex.cleaning = false; if (ex === selected) renderList(); }
-  status('');
+      const rgbaArray = new RgbaArray({ array: rgba, count: n });
+      ex.lodOrig ??= ps.lodSplats;
+      // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
+      const tmp = Object.create(ps); tmp.lodSplats = undefined;
+      await tmp.createLodSplats({ rgbaArray });
+      if (ex.splat !== splat || !exhibits.includes(ex)) { tmp.lodSplats?.dispose(); return; } // reloaded or removed meanwhile
+      const old = ex.cache;
+      ex.cache = { splat, level, lod: tmp.lodSplats, rgba: rgbaArray, removed: res.removed, count: res.count };
+      applyFloaterView(ex);
+      if (old) { if (old.lod !== ps.lodSplats) old.lod?.dispose(); old.rgba?.dispose?.(); }
+    } catch (err) { console.error('floaters', err); status('Could not take out the floaters of ' + ex.name + ': ' + (err?.message || err)); setTimeout(() => status(''), 5000); }
+    finally { ex.cleaning = false; if (ex === selected) renderList(); if (!cleanPending || cleanPending === 1) status(''); }
+  } else applyFloaterView(ex);
+  // the switch may have moved meanwhile: show what it says now
+  if (floatersOn && floaterLevel !== level && !cachedClean(ex)) queueClean(ex);
 }
 
 // erasing by hand: spheres [x, y, z, radius] in the file's frame, hidden by an edit under the splat
@@ -1203,7 +1278,7 @@ function setErase(ex, list) {
     const sdf = new SplatEditSdf({ type: SplatEditSdfType.SPHERE, opacity: 0, radius: e[3] });
     sdf.position.set(e[0], e[1], e[2]); edit.add(sdf);
   }
-  edit.visible = !floatersShown && ex.erase.length > 0;
+  edit.visible = floatersOn && ex.erase.length > 0;
   refreshSamples(ex);
   if (ex === selected) renderList();
 }
@@ -1213,7 +1288,7 @@ function setErase(ex, list) {
 function refreshSamples(ex) {
   const d = splatData(ex); if (!d) return;
   ex.samplesFile ??= ex.samples;
-  const rem = ex.cleanRemoved, E = ex.erase;
+  const rem = ex.cleanRemoved, E = floatersOn ? ex.erase : [];
   if (!rem && !E.length) ex.samples = ex.samplesFile;
   else {
     const { n, pos, alpha } = d, every = Math.max(1, Math.floor(n / MAX_SAMPLES)), out = [];
@@ -1241,6 +1316,7 @@ brush.renderOrder = 999; brush.visible = false; brush.frustumCulled = false; sce
 function startErase() {
   if (!selected?.splat) return;
   if (!splatData(selected)) { status('This splat cannot be erased in.'); setTimeout(() => status(''), 4000); return; }
+  if (!floatersOn) setFloaters(true); // erased spots are part of the floaters: show them hidden
   erasing = true; document.body.classList.add('erasing'); renderList();
 }
 function endErase() {
@@ -1299,16 +1375,13 @@ dom.addEventListener('pointerleave', () => { brush.visible = false; brushAt = nu
 // the controls under the selected splat in the list
 function cleanPanel(ex) {
   const d = document.createElement('div'); d.className = 'clean';
-  const levels = ['', 'light', 'medium', 'strong'];
-  d.innerHTML = `<div class="row"><span title="Hide floaters: loose splats and small clouds hanging in the air, away from the object. The file is not changed">Floaters</span>
-    ${levels.map(l => `<button data-clean="${l}" class="${ex.clean === l ? 'on' : ''}">${l || 'keep'}</button>`).join('')}
-    <span class="n">${ex.cleaning ? 'looking…' : ex.clean && ex.cleanCount != null ? fmtN(ex.cleanCount) + ' hidden' : ''}</span></div>
+  const info = !floatersOn ? 'floaters shown (switch is off)' : ex.cleaning ? 'removing floaters…' : ex.cleanCount != null ? fmtN(ex.cleanCount) + ' floaters hidden' : '';
+  d.innerHTML = `${info ? `<div class="row" style="margin-bottom:6px">${info}</div>` : ''}
     <div class="row"><button class="er ${erasing ? 'on' : ''}" title="X: click floaters to erase them by hand">Erase</button>
-    <span title="Radius of the eraser in metres ([ and ] while erasing)">brush m</span><input type="number" step="0.05" min="0.01" value="${+brushR.toFixed(brushR < 1 ? 2 : 1)}">
+    <span title="Radius of the eraser in metres ([ and ] while erasing)">brush</span><input type="number" step="0.05" min="0.01" value="${+brushR.toFixed(brushR < 1 ? 2 : 1)}"><span>m</span>
     <button class="clr" ${ex.erase.length ? '' : 'disabled'} title="Bring back everything erased by hand">Clear${ex.erase.length ? ' ' + ex.erase.length : ''}</button></div>
     ${erasing ? '<div class="tip">Click on floaters to erase them · [ ] brush size · ⌘Z undoes · Esc or X ends</div>' : ''}`;
   d.onclick = e => e.stopPropagation(); // not a click on the list item (that flies to the exhibit)
-  d.querySelectorAll('[data-clean]').forEach(b => b.onclick = e => { e.stopPropagation(); setClean(ex, b.dataset.clean); });
   d.querySelector('.er').onclick = e => { e.stopPropagation(); erasing ? endErase() : startErase(); };
   d.querySelector('.clr').onclick = e => { e.stopPropagation(); eraseUndo.push({ ex, erase: ex.erase.map(e => e.slice()) }); setErase(ex, []); };
   const inp = d.querySelector('input');
@@ -1318,40 +1391,34 @@ function cleanPanel(ex) {
 Object.assign(window.exhibition, { splatData, findFloaters }); // for testing from the console
 
 
-// Floaters button: show everything again (to compare) or hide it, for all splats at once, without losing the settings.
-// The detail levels from the file are kept next to the cleaned ones, so switching is a swap, not a rebuild.
-let floatersShown = false;
-async function buildClean(o, rgbaArray) {
-  const ps = o.splat.packedSplats;
-  o.lodOrig ??= ps.lodSplats;
-  let lod = null;
-  if (rgbaArray) {
-    // built on a stand-in, so Spark does not throw away the levels in use (and the file's own) meanwhile
-    const tmp = Object.create(ps); tmp.lodSplats = undefined;
-    await tmp.createLodSplats({ rgbaArray });
-    lod = tmp.lodSplats;
-  }
-  const oldLod = o.lodClean, oldRgba = o.rgbaClean;
-  o.lodClean = lod; o.rgbaClean = rgbaArray;
-  applyFloaterView(o);
-  if (oldLod && oldLod !== lod) oldLod.dispose();
-  if (oldRgba && oldRgba !== rgbaArray) oldRgba.dispose?.();
-}
-function applyFloaterView(o) {
-  const splat = o.splat, ps = splat?.packedSplats; if (!ps) return;
-  const clean = !floatersShown && o.lodClean;
-  if (o.lodOrig) ps.lodSplats = clean ? o.lodClean : o.lodOrig;
-  splat.splatRgba = clean ? o.rgbaClean : null;
-  if (o.eraseEdit) o.eraseEdit.visible = !floatersShown && o.erase.length > 0;
+function applyFloaterView(ex) {
+  const splat = ex.splat, ps = splat?.packedSplats; if (!ps) return;
+  ex.lodOrig ??= ps.lodSplats;
+  const c = cachedClean(ex);
+  if (ex.lodOrig) ps.lodSplats = c ? c.lod : ex.lodOrig;
+  splat.splatRgba = c ? c.rgba : null; // used when drawn without detail levels
+  ex.cleanRemoved = c ? c.removed : null; ex.cleanCount = c ? c.count : null;
+  if (ex.eraseEdit) ex.eraseEdit.visible = floatersOn && ex.erase.length > 0;
   splat.updateGenerator(); splat.updateVersion();
+  refreshSamples(ex);
 }
-function toggleFloaters() {
-  floatersShown = !floatersShown;
-  exhibits.forEach(applyFloaterView);
-  const b = document.querySelector('#bFloat');
-  b.classList.toggle('on', !floatersShown); b.textContent = floatersShown ? 'Floaters shown' : 'Floaters hidden';
+function setFloaters(on, level = floaterLevel) {
+  floatersOn = on; floaterLevel = level;
+  try { localStorage.setItem(FLOATER_KEY, JSON.stringify({ on, level })); } catch {}
+  for (const ex of exhibits) if (ex.splat) { applyFloaterView(ex); if (on && !cachedClean(ex)) queueClean(ex); }
+  updateFloatUI(); if (selected) renderList();
 }
-$('#bFloat').onclick = toggleFloaters;
+function updateFloatUI() {
+  $('#floatOn').checked = $('#floatOn2').checked = floatersOn;
+  document.querySelectorAll('#detail [data-level]').forEach(b => b.classList.toggle('on', b.dataset.level === floaterLevel));
+  const hidden = exhibits.reduce((a, e) => a + (e.cleanCount || 0), 0);
+  $('#floatProg').textContent = cleanPending ? `${cleanPending} to go` : '';
+  $('#floatNote').textContent = !floatersOn ? 'off: the scans as they are' : cleanPending ? `working… ${cleanPending} to go` : hidden ? `${fmtN(hidden)} floaters hidden` : 'on';
+}
+$('#floatOn').onchange = e => setFloaters(e.target.checked);
+$('#floatOn2').onchange = e => setFloaters(e.target.checked);
+document.querySelectorAll('#detail [data-level]').forEach(b => b.onclick = () => setFloaters(true, b.dataset.level));
+updateFloatUI();
 
 // ---------- keyboard ----------
 addEventListener('keydown', e => {
@@ -1369,8 +1436,8 @@ addEventListener('keydown', e => {
     case 'n': case ' ': if (exhibits.length) { const ex = exhibits[(i + 1) % exhibits.length]; select(ex); flyTo(ex); } e.preventDefault(); break;
     case 'p': if (exhibits.length) { const ex = exhibits[(i - 1 + exhibits.length) % exhibits.length]; select(ex); flyTo(ex); } break;
     case 'o': overview(); break;
-    case 'x': if (e.shiftKey) toggleFloaters(); break;
-    case 'h': $('#help').classList.toggle('hidden'); break;
+    case 'x': if (e.shiftKey) setFloaters(!floatersOn); break;
+    case 'h': toggleMenu(true); $('#keys').open = true; break;
     case 'b': toggleTheme(); break;
     case 'u': toggleScale(); break;
     case 'l': if (!$('#bLib').classList.contains('hidden')) toggleLibrary(); break;
@@ -1416,7 +1483,14 @@ function toggleScale() {
 }
 $('#bTheme').onclick = toggleTheme;
 $('#bScale').onclick = toggleScale;
-$('#bHelp').onclick = () => $('#help').classList.toggle('hidden');
+// one menu for all settings, under the toolbar; library, publish and the menu take turns there
+function toggleMenu(open = $('#detail').classList.contains('folded')) {
+  if (open) { toggleLibrary(false); togglePublish(false); }
+  $('#detail').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px';
+  $('#detail').classList.toggle('folded', !open);
+  $('#bMenu').classList.toggle('on', open);
+}
+$('#bMenu').onclick = () => toggleMenu();
 $('#bAdd').onclick = $('#pick').onclick = () => $('#file').click();
 $('#file').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
 
@@ -1487,7 +1561,7 @@ function renderLibrary() {
 }
 
 function toggleLibrary(open = $('#library').classList.contains('hidden')) {
-  if (open) togglePublish(false);
+  if (open) { togglePublish(false); toggleMenu(false); }
   $('#library').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px'; // the bar wraps on phones
   $('#library').classList.toggle('hidden', !open);
   $('#bLib').classList.toggle('on', open);
@@ -1630,7 +1704,7 @@ async function sceneState(name) {
     return ids.get(f);
   };
   const scene = { version: 1, name, saved: new Date().toISOString(), exhibits: [], files: [],
-    settings: { theme, uniform, slotGap, showTitles, libLights, pointScale: +$('#ptSize').value, pointShape, detailMode,
+    settings: { floaters: { on: floatersOn, level: floaterLevel }, theme, uniform, slotGap, showTitles, libLights, pointScale: +$('#ptSize').value, pointShape, detailMode,
       radius: +$('#radius').value, budget: +$('#budget').value },
     // mid-flight the view is saved where the flight ends
     camera: tween ? { position: tween.pos.toArray(), look: new THREE.Vector3().subVectors(tween.target, tween.pos).normalize().toArray() }
@@ -1644,7 +1718,7 @@ async function sceneState(name) {
     const sidecars = ex.byName ? [...new Set(ex.byName.values())].filter(f => f !== ex.file && !MAIN_EXT.includes(ext(f.name))) : [];
     scene.exhibits.push({ name: ex.name, file: add(ex.file), sidecars: sidecars.map(add),
       quaternion: ex.pivot.quaternion.toArray(), userScale: ex.userScale, lift: ex.lift,
-      ...(ex.splat && { floaters: ex.clean || null, erase: ex.erase.map(e => e.map(v => +v.toFixed(4))) }),
+      ...(ex.splat && { erase: ex.erase.map(e => e.map(v => +v.toFixed(4))) }),
       ...(ex.libraryAsset && { position: ex.root.position.toArray(),
         library: { name: ex.libEntry.name, file: ex.libEntry.file, group: ex.libEntry.group, meta: ex.libEntry.meta } }) });
   }
@@ -1722,6 +1796,7 @@ async function openExhibition(src) {
     [...exhibits].forEach(removeExhibit);
     const st = scene.settings || {};
     // settings first: the import budget decides how the clouds are read
+    if (st.floaters) setFloaters(!!st.floaters.on, CLEAN[st.floaters.level] ? st.floaters.level : floaterLevel);
     if (st.budget !== undefined) { $('#budget').value = st.budget; readBudget(); }
     if (st.theme && st.theme !== theme) toggleTheme();
     if (st.uniform !== undefined && st.uniform !== uniform) {
@@ -1768,7 +1843,7 @@ async function openExhibition(src) {
         ex.pivot.quaternion.fromArray(e.quaternion || [0, 0, 0, 1]);
         ex.userScale = e.userScale ?? 1; ex.lift = e.lift ?? 0;
         if (ex.splat && Array.isArray(e.erase) && e.erase.length) setErase(ex, e.erase.filter(a => Array.isArray(a) && a.length === 4 && a.every(isFinite)));
-        if (ex.splat && e.floaters && CLEAN[e.floaters]) setClean(ex, e.floaters);
+        if (e.floaters && CLEAN[e.floaters] && !st.floaters) setFloaters(true, e.floaters); // saved by v0.14, per exhibit
         layout();
       } catch (err) {
         console.error(e.name, err);
@@ -1829,7 +1904,7 @@ function pagesOf(repo) {
 }
 
 function togglePublish(open = $('#publish').classList.contains('hidden')) {
-  if (open) toggleLibrary(false);
+  if (open) { toggleLibrary(false); toggleMenu(false); }
   $('#publish').style.top = $('#bar').getBoundingClientRect().bottom + 8 + 'px';
   $('#publish').classList.toggle('hidden', !open);
   $('#bPublish').classList.toggle('on', open);

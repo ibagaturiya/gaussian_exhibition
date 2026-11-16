@@ -8,7 +8,9 @@ Supported files: `.ply` `.splat` `.ksplat` `.spz` · `.glb` `.gltf` `.obj` (+`.m
 
 Drop, paste (⌘V / Ctrl+V) or choose files. On phones and tablets: one finger orbits, pinch flies in and out, twist rotates, double-tap flies to a model. The Paste button next to + Add loads a copied link to a model file (phones only let web pages paste links, not files).
 
-**Floaters:** select a splat and its row in the Exhibition list shows *Floaters: keep / light / medium / strong* (hides loose splats and small cut-off clouds automatically, e.g. the dome of sky around a Scaniverse scan, and fits the exhibit to what is left) and **Erase** (X): click on floaters to hide everything within the brush (`brush m`, `[` `]` while erasing, ⌘Z undoes, *Clear* brings it back). The files are not changed; both are saved and published with the exhibition. **Floaters hidden / shown** in the top bar (Shift+X) brings back everything hidden in all splats at once, to compare, and hides it again; the settings stay.
+**Floaters:** the **Remove floaters** switch in the toolbar (Shift+X) takes loose splats and small cut-off clouds out of every splat, e.g. the sky dome that makes a Scaniverse scan look like a ball, and fits each exhibit to what is left; off shows the scans as they are. It is on by default and applies to everything you add; the first time takes a few seconds per splat, switching after that is instant. Strength (light / medium / strong) is in the ☰ menu. To erase more by hand, select a splat and click **Erase** in its row (X), then click on floaters (`[` `]` brush size, ⌘Z undoes). The files are not changed; the switch and the erased spots are saved and published with the exhibition.
+
+**Menu:** ☰ holds all settings in foldable sections (Floaters, View, Detail, Points, Keys); H opens the keys. The exhibition list folds by its title.
 
 **Library:** prepared GLB assets (plinths, lamps, …) listed in `library/index.json` can be placed from the Library button, at real scale. Each collection has a `library/<collection>/manifest.json`:
 
