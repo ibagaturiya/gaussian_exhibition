@@ -8,170 +8,269 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Scan Exhibition</title>
 <style>
+  /* look and feel shared with the GIF generator: clear glass on a dotted canvas, one burnt-orange accent */
   :root {
-    --bg: #141416; --fg: #f2f1ee; --muted: rgba(235,235,245,.58); --line: rgba(255,255,255,.12);
-    --glass: rgba(30,30,34,.52); --glass-hi: rgba(255,255,255,.07); --edge: rgba(255,255,255,.13);
-    --btn: rgba(255,255,255,.07); --btn-hover: rgba(255,255,255,.14); --accent: #ff5b3d; --accent-soft: rgba(255,91,61,.18);
-    --shadow: 0 12px 40px rgba(0,0,0,.38);
-    --panel: var(--glass);
+    --bg: #151517; --fg: #f5f5f7; --muted: rgba(235,235,245,.6); --line: rgba(255,255,255,.1);
+    --tint: rgba(38,38,44,.16); --fill: rgba(255,255,255,.08); --fill-hi: rgba(255,255,255,.16);
+    --rim: rgba(255,255,255,.55); --rim-lo: rgba(255,255,255,.12);
+    --accent: #8a3a16; --accent-soft: rgba(138,58,22,.32);
+    --shadow: 0 10px 40px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25);
+    --dot: rgba(255,255,255,.16);
+    --top: 70px;   /* under the toolbar, set from its real height (it wraps on phones) */
   }
   :root[data-theme="light"] {
-    --bg: #ecebe7; --fg: #1c1c1e; --muted: rgba(60,60,67,.62); --line: rgba(0,0,0,.1);
-    --glass: rgba(255,255,255,.58); --glass-hi: rgba(255,255,255,.7); --edge: rgba(0,0,0,.08);
-    --btn: rgba(0,0,0,.05); --btn-hover: rgba(0,0,0,.1); --accent: #e0442a; --accent-soft: rgba(224,68,42,.13);
-    --shadow: 0 12px 36px rgba(0,0,0,.14);
+    --bg: #f4f0e8; --fg: #1d1d1f; --muted: rgba(60,60,67,.62); --line: rgba(0,0,0,.08);
+    --tint: rgba(255,255,255,.2); --fill: rgba(0,0,0,.05); --fill-hi: rgba(0,0,0,.09);
+    --rim: rgba(255,255,255,.95); --rim-lo: rgba(255,255,255,.4);
+    --accent: #8a3a16; --accent-soft: rgba(138,58,22,.16);
+    --shadow: 0 10px 36px rgba(30,40,80,.14), 0 2px 6px rgba(30,40,80,.08);
+    --dot: rgba(60,50,40,.2);
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--fg);
     font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { background: radial-gradient(circle, var(--dot) 1.1px, transparent 1.6px) 0 0 / 22px 22px, var(--bg); }
+  /* an app, not a document: clicks never select text; only fields can be selected */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; }
+  img, svg, canvas { -webkit-user-drag: none; }
   canvas { display: block; touch-action: none; }
   .hidden { display: none !important; }
+  .note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+  svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  /* glass panels */
-  .ui { position: fixed; background: var(--glass); border: 1px solid var(--edge); border-radius: 16px; padding: 10px;
-    backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7);
-    box-shadow: var(--shadow), inset 0 1px 0 var(--glass-hi); }
-  button { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 10px;
-    padding: 6px 12px; cursor: pointer; transition: background .15s, color .15s, border-color .15s; white-space: nowrap; }
-  button:hover { background: var(--btn-hover); }
-  button.on { background: var(--accent-soft); color: var(--accent); }
-  button:disabled { opacity: .4; cursor: default; }
-  button.icon { padding: 6px 10px; min-width: 34px; }
+  /* clear glass: little tint, light blur, a 1px light rim brighter on the lit edges */
+  .ui { position: fixed; background: linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.01) 50%), var(--tint);
+    border-radius: 22px; padding: 10px;
+    backdrop-filter: blur(2.5px) saturate(1.5) brightness(1.06); -webkit-backdrop-filter: blur(2.5px) saturate(1.5) brightness(1.06);
+    box-shadow: var(--shadow), inset 0 1px 1px rgba(255,255,255,.18), inset 0 -1px 1px rgba(0,0,0,.06); }
+  .ui::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(135deg, var(--rim), var(--rim-lo) 30%, transparent 50%, var(--rim-lo) 75%, var(--rim));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+  /* panels over the scene keep their text readable: more frost */
+  :is(#detail, #library, #publish, #list, #status, #empty > div, #notice > div) {
+    background: linear-gradient(160deg, rgba(255,255,255,.1), rgba(255,255,255,.02) 50%), color-mix(in srgb, var(--tint) 100%, var(--bg) 45%);
+    backdrop-filter: blur(22px) saturate(1.7); -webkit-backdrop-filter: blur(22px) saturate(1.7); }
+
+  button { font: inherit; color: var(--fg); background: transparent; border: 0; border-radius: 999px;
+    padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .2s, color .2s, transform .15s; white-space: nowrap; }
+  button:hover { background: var(--fill); }
+  button:active { transform: scale(.96); }
+  button.on { background: var(--accent-soft); color: color-mix(in srgb, var(--accent) 45%, var(--fg)); }
+  button:disabled { opacity: .35; cursor: default; transform: none; }
+  button:disabled:hover { background: transparent; }
+  button.icon { padding: 0; width: 36px; height: 36px; }
+  button.soft { background: var(--fill); }
+  button.soft:hover { background: var(--fill-hi); }
+  button.primary, button.primary.on { color: #fff; font-weight: 600; background: var(--accent); }
+  button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* tooltips: short, under the control, never while a menu is open */
+  [data-tip] { position: relative; }
+  body:has(:is(#detail:not(.folded), #library:not(.hidden), #publish:not(.hidden))) [data-tip]::after { display: none !important; }
+  @media (hover: hover) {
+    [data-tip]:hover::after { content: attr(data-tip); position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+      background: rgba(20,20,24,.82); color: #fff; font-size: 11px; font-weight: 500; padding: 5px 9px; border-radius: 8px; white-space: nowrap;
+      pointer-events: none; z-index: 20; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: tip .15s .35s both; }
+  }
+  @keyframes tip { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pop { from { opacity: 0; transform: scale(.94); } }
+
   input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
   input[type=checkbox] { accent-color: var(--accent); }
-  .note { color: var(--muted); font-size: 11px; }
 
   /* switch */
   .switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
   .switch input { position: absolute; opacity: 0; pointer-events: none; }
-  .switch .track { width: 34px; height: 20px; border-radius: 10px; background: var(--btn-hover); position: relative; transition: background .2s; flex: none; }
-  .switch .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
-    background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .2s; }
+  .switch .track { width: 38px; height: 22px; border-radius: 11px; background: var(--fill-hi); position: relative; transition: background .25s; flex: none; }
+  .switch .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.3); transition: transform .3s cubic-bezier(.3,1.5,.6,1); }
   .switch input:checked + .track { background: var(--accent); }
-  .switch input:checked + .track::after { transform: translateX(14px); }
+  .switch input:checked + .track::after { transform: translateX(16px); }
   .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* toolbar */
-  #bar { top: 14px; right: 14px; display: flex; gap: 4px; align-items: center; padding: 5px; border-radius: 14px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 28px); }
-  #bar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 4px; }
-  #floatSwitch { padding: 4px 8px 4px 6px; border-radius: 10px; }
+  /* toolbar: one floating capsule, top center */
+  #bar { top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; align-items: center; padding: 5px; border-radius: 999px; z-index: 3; max-width: calc(100vw - 16px); }
+  #bar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 5px; }
+  #floatSwitch { padding: 7px 10px; border-radius: 999px; }
+  #floatSwitch:hover { background: var(--fill); }
   #floatSwitch .lbl { font-weight: 500; }
   #floatSwitch .prog { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #floatSwitch .prog:empty { display: none; }
 
-  /* exhibition list (main window) */
-  #list { top: 14px; left: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 28px); display: flex; flex-direction: column; padding: 6px; }
-  .phead { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; user-select: none; border-radius: 10px; }
-  .phead:hover { background: var(--btn); }
-  .phead h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; letter-spacing: .01em; }
-  .phead .count { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 6px; }
-  .chev { color: var(--muted); transition: transform .2s; font-size: 11px; }
-  .folded .chev { transform: rotate(-90deg); }
-  #list ol { margin: 4px 0 0; padding: 0; list-style: none; overflow: auto; min-height: 0; counter-reset: ex; }
-  #list.folded ol { display: none; }
-  #list li { counter-increment: ex; cursor: pointer; padding: 6px 8px 6px 34px; border-radius: 10px; position: relative;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #list li::before { content: counter(ex, decimal-leading-zero); position: absolute; left: 9px; top: 7px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  #list li:hover { background: var(--btn); }
-  #list li.sel { background: var(--accent-soft); color: var(--accent); }
+  /* exhibition list: a foldable panel on the left, full height; folded it is a slim vertical tab */
+  #list { top: var(--top); left: 14px; max-height: calc(100vh - var(--top) - 14px); width: 300px; padding: 6px 10px 8px; border-radius: 24px; z-index: 2;
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: width .42s cubic-bezier(.3,1,.35,1), padding .42s, border-radius .42s; }
+  #list.folded { width: 46px; padding: 6px 5px; border-radius: 23px; cursor: pointer; }
+  .phead { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 0 -4px; cursor: pointer; user-select: none; border-radius: 999px; white-space: nowrap; }
+  .phead:hover { background: var(--fill); }
+  .phead h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
+  .phead .count { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .chev { color: var(--muted); transition: transform .25s; width: 14px; height: 14px; flex: none; }
+  #list.folded .phead { flex-direction: column-reverse; justify-content: flex-end; margin: 0; padding: 12px 0; gap: 10px; border-radius: 18px; }
+  #list.folded .phead h1 { writing-mode: vertical-rl; flex: none; }
+  #list.folded .phead .count { margin: 6px 0 0; }
+  #list.folded .chev { transform: rotate(180deg); }
+  #list ol { margin: 4px 0 0; padding: 0 0 4px; list-style: none; overflow: auto; min-height: 0; min-width: 276px; counter-reset: ex;
+    transition: opacity .25s .16s, transform .35s .1s cubic-bezier(.3,1,.35,1); }
+  #list.folded ol { opacity: 0; transform: translateX(-16px); pointer-events: none; transition: opacity .12s, transform .12s; }
+  #list li { counter-increment: ex; cursor: pointer; padding: 7px 10px 7px 36px; border-radius: 12px; position: relative;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .2s; }
+  #list li::before { content: counter(ex, decimal-leading-zero); position: absolute; left: 11px; top: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #list li:hover { background: var(--fill); }
+  #list li.sel { background: var(--accent-soft); color: color-mix(in srgb, var(--accent) 45%, var(--fg)); }
   #list li .k { color: var(--muted); font-size: 11px; margin-left: 6px; }
   #list li.err { color: var(--muted); text-decoration: line-through; }
   #list li .meta { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; margin: 4px 0 2px; white-space: normal; color: var(--muted); font-size: 11px; }
   #list li .meta span:nth-child(odd) { color: var(--fg); }
   #list li .clean { white-space: normal; margin: 6px 0 2px; cursor: default; color: var(--muted); font-size: 11px; }
   #list li .clean .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  #list li .clean button { padding: 3px 9px; font-size: 11px; }
-  #list li .clean input { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent; border-radius: 8px; padding: 3px 6px; width: 4.5em; }
-  #list li .clean .tip { color: var(--accent); margin-top: 4px; }
+  #list li .clean button { padding: 3px 10px; font-size: 11px; background: var(--fill); }
+  #list li .clean button:hover { background: var(--fill-hi); }
+  #list li .clean button.on { background: var(--accent); color: #fff; }
+  #list li .clean input { font: inherit; color: var(--fg); background: var(--fill); border: 1px solid transparent; border-radius: 9px; padding: 3px 7px; width: 4.5em; }
+  #list li .clean input:focus { outline: none; border-color: var(--accent); }
+  #list li .clean .tip { color: color-mix(in srgb, var(--accent) 45%, var(--fg)); margin-top: 4px; }
   body.erasing canvas { cursor: crosshair; }
 
-  /* settings menu */
-  #detail { top: 66px; right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; padding: 6px; z-index: 2; }
+  /* settings popover under the toolbar, sections folded */
+  #detail { top: var(--top); right: 14px; width: min(320px, calc(100vw - 28px)); padding: 0; z-index: 4; overflow: hidden;
+    transform-origin: top right; animation: pop .22s cubic-bezier(.3,1.3,.6,1); }
   #detail.folded { display: none; }
-  #detail details { border-radius: 12px; }
+  #detail .scroll { max-height: calc(100vh - var(--top) - 14px); overflow: auto; padding: 6px 8px 10px; }
+  #detail details { border-radius: 14px; }
   #detail details + details { margin-top: 2px; }
-  #detail summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; border-radius: 10px; font-weight: 600; user-select: none; }
+  #detail summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 10px; border-radius: 12px; cursor: pointer; user-select: none; font-weight: 600; }
   #detail summary::-webkit-details-marker { display: none; }
-  #detail summary:hover { background: var(--btn); }
-  #detail summary::after { content: '›'; margin-left: auto; color: var(--muted); transition: transform .2s; font-size: 15px; line-height: 1; }
-  #detail details[open] > summary::after { transform: rotate(90deg); }
+  #detail summary:hover { background: var(--fill); }
+  #detail summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 1.6px 1.6px 0;
+    transform: rotate(-45deg); transition: transform .2s; }
+  #detail details[open] > summary::after { transform: rotate(45deg); }
+  #detail details[open] { background: var(--fill); }
+  #detail details[open] > summary:hover { background: transparent; }
   #detail summary .ic { width: 18px; text-align: center; color: var(--muted); font-weight: 400; }
-  #detail .body { display: grid; grid-template-columns: 84px 1fr auto; gap: 8px 10px; align-items: center; padding: 4px 10px 12px; }
+  #detail .body { display: grid; grid-template-columns: 76px 1fr auto; gap: 10px; align-items: center; padding: 2px 10px 14px; }
   #detail .body > label, #detail .body > .lbl { color: var(--muted); }
   #detail .body .wide { grid-column: 1 / -1; }
-  #detail output { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; color: var(--muted); }
-  #detail .seg { grid-column: 2 / 4; display: flex; gap: 2px; background: var(--btn); border-radius: 10px; padding: 2px; }
-  #detail .seg button { flex: 1; padding: 4px 6px; background: transparent; border-radius: 8px; }
-  #detail .seg button.on { background: var(--glass-hi); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-  :root[data-theme="light"] #detail .seg button.on { background: #fff; }
-  #detail .seg button:hover:not(.on) { background: var(--btn-hover); }
-  #help table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  #help td { padding: 2px 8px 2px 0; vertical-align: top; color: var(--muted); }
-  #help b { color: var(--fg); font-weight: 600; white-space: nowrap; }
-  #version { font-size: 10px; color: var(--muted); padding: 8px 10px 4px; }
+  #detail .body button { padding: 5px 12px; }
+  #detail .body > button { background: var(--fill); }
+  #detail .body > button:hover { background: var(--fill-hi); }
+  #detail .body > button.on { background: var(--accent-soft); }
+  #detail output { font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; color: var(--muted); }
+  .seg { grid-column: 2 / 4; display: flex; gap: 2px; background: var(--fill); border-radius: 999px; padding: 3px; }
+  .seg button { flex: 1; padding: 4px 8px !important; }
+  .seg button.on { background: var(--tint); color: var(--fg); box-shadow: 0 1px 6px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.2); }
+  :root[data-theme="light"] .seg button.on { background: #fff; }
+  .seg.gum-acts { border-radius: 16px; }
+  #keyTable table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  #keyTable td { padding: 2px 8px 2px 0; vertical-align: top; color: var(--muted); }
+  #keyTable b { color: var(--fg); font-weight: 600; white-space: nowrap; }
+  #version { font-size: 10px; color: var(--muted); margin: 10px 8px 0; padding-top: 10px; border-top: 1px solid var(--line); }
   #version a { color: inherit; }
 
-  #status { top: 14px; left: 50%; transform: translateX(-50%); display: none; color: var(--fg); padding: 8px 14px; border-radius: 12px; max-width: calc(100vw - 28px); }
+  /* status: a small pill under the toolbar */
+  #status { top: var(--top); left: 50%; transform: translateX(-50%); display: none; color: var(--fg); padding: 8px 16px; border-radius: 18px; max-width: min(480px, calc(100vw - 28px)); z-index: 3; text-align: center; }
   #empty { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
-  #empty > div { text-align: center; color: var(--muted); pointer-events: auto; padding: 28px 32px; border-radius: 20px; background: var(--glass);
-    border: 1px solid var(--edge); backdrop-filter: blur(24px) saturate(1.7); -webkit-backdrop-filter: blur(24px) saturate(1.7); box-shadow: var(--shadow); max-width: min(520px, calc(100vw - 28px)); }
-  #empty strong { display: block; color: var(--fg); font-size: 22px; font-weight: 600; margin-bottom: 6px; }
-  #empty #pick { margin-top: 14px; background: var(--accent); color: #fff; padding: 8px 18px; }
-  #notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
-  #notice > div { position: static; max-width: 420px; text-align: center; color: var(--muted); padding: 22px 24px; }
-  #notice strong { display: block; color: var(--fg); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  #empty > div { position: relative; text-align: center; color: var(--muted); pointer-events: auto; padding: 36px 40px 30px; border-radius: 28px;
+    box-shadow: var(--shadow), inset 0 1px 1px rgba(255,255,255,.18); max-width: min(520px, calc(100vw - 28px)); }
+  #empty .big { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; margin: 0 auto 14px; color: var(--fg);
+    background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,0) 60%), var(--fill-hi);
+    box-shadow: 0 4px 16px rgba(0,0,0,.15), inset 0 1px 0 rgba(255,255,255,.35), inset 0 0 0 1px var(--line); }
+  #empty .big svg { width: 28px; height: 28px; }
+  #empty strong { display: block; color: var(--fg); font-size: 19px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 6px; }
+  #empty .types { font-size: 11px; margin-top: 8px; }
+  #empty #pick { margin-top: 18px; padding: 8px 20px; }
+  #empty .paste-btn { background: var(--fill); }
+  #notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; z-index: 5; }
+  #notice > div { position: relative; max-width: 420px; text-align: center; color: var(--muted); padding: 24px 26px; border-radius: 24px; }
+  #notice strong { display: block; color: var(--fg); font-size: 19px; font-weight: 600; margin-bottom: 8px; }
   #notice button { margin-top: 16px; }
-  #drop { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 18px; display: none; pointer-events: none; background: var(--accent-soft); }
-  body.dragging #drop { display: block; }
-  #touchbar { bottom: 14px; left: 50%; transform: translateX(-50%); display: none; gap: 6px; padding: 6px; }
+  #drop { position: fixed; inset: 10px; border-radius: 28px; display: none; pointer-events: none; place-content: center; text-align: center; z-index: 5;
+    background: var(--accent-soft); box-shadow: inset 0 0 0 3px var(--accent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  #drop::after { content: 'Drop to add to the exhibition'; font-size: 20px; font-weight: 600; color: color-mix(in srgb, var(--accent) 45%, var(--fg)); }
+  body.dragging #drop { display: grid; }
+  #touchbar { bottom: 14px; left: 50%; transform: translateX(-50%); display: none; gap: 4px; padding: 5px; border-radius: 999px; z-index: 3; }
   #touchbar button { min-width: 44px; min-height: 40px; font-size: 15px; }
 
-  #library, #publish { top: 66px; right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - 80px);
-    display: flex; flex-direction: column; gap: 8px; z-index: 2; padding: 12px; }
+  /* library and publish: popovers under the toolbar, like the menu */
+  #library, #publish { top: var(--top); right: 14px; width: min(320px, calc(100vw - 28px)); max-height: calc(100vh - var(--top) - 14px);
+    display: flex; flex-direction: column; gap: 8px; z-index: 4; padding: 12px 14px 14px; border-radius: 20px; transform-origin: top right; animation: pop .22s cubic-bezier(.3,1.3,.6,1); }
   #library header, #publish header { display: flex; align-items: center; gap: 6px; }
-  #library header h1, #publish header h1 { font-size: 13px; font-weight: 600; margin: 0; flex: 1; }
-  #library header button, #publish header button { padding: 2px 9px; }
-  #library select, #library input, #publish select, #publish input { font: inherit; color: var(--fg); background: var(--btn); border: 1px solid transparent;
-    border-radius: 10px; padding: 6px 8px; width: 100%; }
+  #library header h1, #publish header h1 { font-size: 11px; font-weight: 600; margin: 0; flex: 1; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  #library header button, #publish header button { width: 28px; height: 28px; padding: 0; font-size: 16px; color: var(--muted); }
+  #library select, #library input, #publish select, #publish input { font: inherit; color: var(--fg); background: var(--fill); border: 1px solid transparent;
+    border-radius: 10px; padding: 6px 10px; width: 100%; }
+  :is(#library, #publish) :is(select, input):focus { outline: none; border-color: var(--accent); }
   #library select option, #publish select option { color: #1d1d1b; }
   #publish label { color: var(--muted); display: grid; gap: 4px; }
   #publish .row { display: flex; gap: 6px; }
+  #publish .row button { background: var(--fill); }
   #publish a { color: var(--muted); }
-  #publish h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 10px 0 0; }
-  #publish .used { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  #publish h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 0; }
+  #publish .used { height: 4px; background: var(--fill-hi); border-radius: 2px; overflow: hidden; }
   #pubUsed { height: 100%; width: 0; background: var(--accent); }
   #pubShows { overflow: auto; min-height: 0; display: grid; gap: 8px; }
   #pubShows .show { display: flex; gap: 8px; align-items: flex-start; }
   #pubShows .show.ended { opacity: .5; }
-  #pubShows .thumb { width: 64px; height: 40px; flex: none; border-radius: 6px; background: var(--line) center / cover; }
+  #pubShows .thumb { width: 64px; height: 40px; flex: none; border-radius: 9px; background: var(--line) center / cover; }
   #pubShows .info { min-width: 0; display: grid; gap: 1px; }
   #pubShows .info b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #pubShows .info > span { color: var(--muted); font-size: 11px; }
   #pubShows .acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
-  #pubShows .acts button { padding: 2px 8px; font-size: 11px; }
+  #pubShows .acts button { padding: 2px 9px; font-size: 11px; background: var(--fill); }
   #pubShows .acts button.del { min-width: 7.5em; } /* same size when it asks "Really delete?", so the second click hits it */
   #pubShows .acts a { font-size: 11px; }
   #libItems { overflow: auto; min-height: 0; }
-  #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0 2px; }
+  #libItems h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
   #libItems .item { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 10px; cursor: pointer; }
-  #libItems .item:hover { background: var(--btn-hover); }
-  #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; background: var(--line); }
+  #libItems .item:hover { background: var(--fill); }
+  #libItems .item img { width: 36px; height: 36px; object-fit: cover; border-radius: 8px; flex: none; background: var(--line); }
   #libItems .item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #libItems .note { color: var(--muted); padding: 4px 0; }
   body:not(.has-exhibits) #bSave { display: none; }
+
+  /* first steps: the screen darkens, numbered notes with arrows point at what to click */
+  #tour { position: fixed; inset: 0; z-index: 100; cursor: pointer; animation: tourIn .45s ease-out; }
+  @keyframes tourIn { from { opacity: 0; } }
+  #tourSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #tourSvg .dim { fill: rgba(10,10,12,.58); }
+  #tourSvg .ring { fill: none; stroke: rgba(255,255,255,.75); stroke-width: 1.5; }
+  #tourSvg .arrow { fill: none; stroke: #fff; stroke-width: 1.6; }
+  #tourNotes .hl { position: absolute; white-space: nowrap; color: #fff; font-style: italic; font-size: 14px; text-shadow: 0 1px 6px rgba(0,0,0,.8); }
+  .hnum { font-style: normal; display: inline-grid; place-items: center; width: 21px; height: 21px; margin-right: 6px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+  #tourCard { z-index: 2; position: absolute; width: min(400px, calc(100vw - 40px)); max-height: calc(100vh - 170px); overflow: auto; padding: 16px 20px; border-radius: 18px; background: rgba(20,20,24,.92); box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 20px 60px rgba(0,0,0,.5); color: #fff; cursor: default; }
+  #tourCard h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.6); }
+  #tourCard h3.more { margin-top: 14px; }
+  #tourCard p { font-style: italic; font-size: 13.5px; line-height: 1.35; display: flex; align-items: baseline; border-radius: 10px; padding: 3px 6px; margin: 2px -6px; transition: opacity .2s, background .2s; }
+  #tourCard p .hnum { flex: none; }
+  #tourCard p:hover { background: rgba(255,255,255,.07); }
+  #tourCard p span i { opacity: .7; }
+  #tourCard .hhint { margin-top: 12px; font-size: 11.5px; font-style: italic; color: rgba(255,255,255,.5); }
+  #tourCard .hmore { margin-top: 10px; background: rgba(255,255,255,.1); color: #fff; font-style: italic; padding: 6px 14px; }
+  #tourCard .hmore:hover { background: rgba(255,255,255,.18); }
+  #tourSvg .ring, #tourSvg .arrow, #tourNotes .hl { transition: opacity .2s; }
+  #tourHoles .hole { transition: fill-opacity .2s; }
+
   .touch-only { display: none; }
   @media (pointer: coarse) {
     #library select, #library input, #publish select, #publish input { font-size: 16px; } /* iOS zooms into smaller inputs */
     #libItems .item { min-height: 44px; }
     body.has-exhibits #touchbar { display: flex; }
+    body.has-exhibits #list { max-height: calc(100vh - var(--top) - 76px); }
     .touch-only { display: revert; }
     .desk-only { display: none; }
   }
   @media (max-width: 640px) {
     body { font-size: 14px; }
-    #bar { top: 10px; right: 10px; left: 10px; justify-content: flex-start; }
+    #bar { left: 10px; right: 10px; transform: none; flex-wrap: wrap; justify-content: center; border-radius: 22px; }
     #bar button { min-height: 34px; }
-    #list { top: 66px; left: 10px; width: calc(100vw - 20px); max-height: 38vh; }
-    #detail, #library, #publish { right: 10px; width: calc(100vw - 20px); max-height: 60vh; }
+    #list { left: 10px; }
+    #list:not(.folded) { width: calc(100vw - 20px); max-height: 45vh; }
+    #detail, #library, #publish { right: 10px; width: calc(100vw - 20px); }
   }
 </style>
 <script>
@@ -258,39 +357,41 @@
 </script>
 </head>
 <body>
-<div id="empty"><div>
+<div id="empty"><div class="ui">
+  <div class="big"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><circle cx="6" cy="15" r="2.4"/><circle cx="17.5" cy="15.5" r="2.8"/><path d="M3 21h18"/></svg></div>
   <strong>Drop your models here</strong>
-  splats · point clouds · meshes, as many as you like<br>
-  .ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts · saved exhibitions (.zip)<br><br>
-  <button id="pick">or choose files…</button>
+  splats · point clouds · meshes, as many as you like
+  <div class="types">.ply .splat .ksplat .spz · .glb .gltf .obj(+mtl) .fbx .stl .3dm .pcd .xyz .pts · saved exhibitions (.zip)</div>
+  <button id="pick" class="primary">Choose files…</button>
   <div class="desk-only" style="margin-top:8px">or paste them: copy files in the Finder, then ⌘V here</div>
   <div class="touch-only" style="margin-top:8px"><button class="paste-btn">or paste a link</button></div>
 </div></div>
 <div id="drop"></div>
 <div id="notice" class="hidden"><div class="ui"><strong id="noticeTitle"></strong><span id="noticeText"></span><br>
-  <button id="noticeOk">Open the viewer empty</button></div></div>
+  <button id="noticeOk" class="primary">Open the viewer empty</button></div></div>
 
 <div id="list" class="ui hidden">
-  <div class="phead fold"><h1>Exhibition<span class="count" id="exCount"></span></h1><span class="chev">▾</span></div>
+  <div class="phead fold"><h1>Exhibition<span class="count" id="exCount"></span></h1><svg class="i chev" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></div>
   <ol></ol>
 </div>
 
 <div id="bar" class="ui">
-  <button id="bAdd" title="Add files">+ Add</button>
-  <button id="bLib" class="hidden" title="L: prepared assets, placed at real scale">Library</button>
+  <button id="bAdd" data-tip="Add files, or drop them anywhere">+ Add</button>
+  <button id="bLib" class="hidden" data-tip="Prepared assets at real scale · L">Library</button>
   <button id="bPaste" class="paste-btn touch-only" title="Paste a link to a model file">Paste</button>
-  <button id="bSave" title="Save the exhibition with all its files as a zip: unzip and double-click exhibition.html, or drop the zip here">Save</button>
-  <button id="bPublish" title="Put the exhibition online for a few days and get a link to share; see what is online">Publish</button>
+  <button id="bSave" data-tip="Download everything as one .zip">Save</button>
+  <button id="bPublish" data-tip="Online for a few days, as a link">Publish</button>
   <span class="sep"></span>
-  <label id="floatSwitch" class="switch" title="Shift+X: take the floaters out of every splat (loose splats, the sky dome around a scan), or show the scans as they are">
+  <label id="floatSwitch" class="switch" data-tip="Loose splats and sky domes out of every scan · Shift+X">
     <input type="checkbox" id="floatOn"><span class="track"></span><span class="lbl">Remove floaters</span><span class="prog" id="floatProg"></span></label>
   <span class="sep"></span>
-  <button id="bMenu" class="icon" title="Settings (H: keys)" aria-label="settings">☰</button>
+  <button id="bHelp" class="icon" aria-label="How it works" data-tip="How it works"><b style="font-size:15px">?</b></button>
+  <button id="bMenu" class="icon" data-tip="Settings · H" aria-label="settings">⋯</button>
 </div>
 
 <div id="status" class="ui"></div>
-<div id="detail" class="ui folded">
-  <details open><summary><span class="ic">✦</span>Floaters</summary><div class="body">
+<div id="detail" class="ui folded"><div class="scroll">
+  <details><summary><span class="ic">✦</span>Floaters</summary><div class="body">
     <span class="lbl">Remove</span><label class="switch" style="grid-column: 2 / 4"><input type="checkbox" id="floatOn2"><span class="track"></span><span class="note" id="floatNote"></span></label>
     <span class="lbl">Strength</span><div class="seg"><button data-level="light">light</button><button data-level="medium" class="on">medium</button><button data-level="strong">strong</button></div>
     <div class="wide note">Takes loose splats and small cut-off clouds out of every splat, e.g. the sky dome around a Scaniverse scan, and fits each exhibit to what is left. To erase more by hand: select a splat, then <b>Erase</b> in its row (X).</div>
@@ -322,7 +423,7 @@
       <button data-rot="reset" title="Back to how it was loaded">Reset</button></div>
     <div class="wide note">Select an exhibit, then drag the rings (red, green, blue: tip, turn, roll). It stays standing on the floor in its place. ⌘Z undoes.</div>
   </div></details>
-  <details id="keys"><summary><span class="ic">⌘</span>Keys</summary><div class="body"><div class="wide" id="help"><table>
+  <details id="keys"><summary><span class="ic">⌘</span>Keys</summary><div class="body"><div class="wide" id="keyTable"><table>
     <tr><td><b>Left-drag</b></td><td>orbit</td><td><b>Click</b></td><td>select</td></tr>
     <tr><td><b>Right-drag</b></td><td>turn camera</td><td><b>Dbl-click</b></td><td>fly to exhibit</td></tr>
     <tr><td><b>Middle-drag</b></td><td>pan</td><td><b>N / P</b></td><td>next / previous</td></tr>
@@ -336,13 +437,13 @@
     <tr><td><b>Shift+X</b></td><td>floaters on / off</td><td><b>X</b></td><td>erase by hand</td></tr>
     <tr class="lib-only hidden"><td><b>L</b></td><td>library</td><td><b>Drag</b></td><td>move library asset</td></tr>
   </table></div></div></details>
-  <div id="version"><span id="versionText">v0.16</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
-</div>
+  <div id="version"><span id="versionText">v0.17</span> · <a href="https://github.com/ibagaturiya/gaussian_exhibition" target="_blank" rel="noopener">source (AGPL-3.0)</a></div>
+</div></div>
 <script>
 // date follows the file itself, so it stays right after every edit
 (() => { const d = new Date(document.lastModified); if (isNaN(d)) return;
   const p = n => String(n).padStart(2, '0');
-  document.getElementById('versionText').textContent = `v0.16 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
+  document.getElementById('versionText').textContent = `v0.17 · ${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; })();
 </script>
 <div id="touchbar" class="ui">
   <button id="tPrev" aria-label="previous exhibit">‹</button>
@@ -365,7 +466,7 @@
     <input id="pubRepo" autocomplete="off" spellcheck="false" placeholder="owner/exhibitions"></label>
   <label id="pubTokenRow">GitHub token, once on this device
     <input id="pubToken" type="password" autocomplete="off" placeholder="github_pat_…"></label>
-  <button id="pubGo">Publish</button>
+  <button id="pubGo" class="primary">Publish</button>
   <div id="pubOut" class="hidden">
     <div class="row"><input id="pubLink" readonly aria-label="link"><button id="pubCopy">Copy</button></div>
     <div id="pubNote" class="note"></div>
@@ -375,6 +476,7 @@
   <div class="used"><div id="pubUsed"></div></div>
   <div id="pubShows"></div>
 </div>
+<div id="tour" class="hidden"><svg id="tourSvg"><defs><marker id="tourArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#fff"/></marker><mask id="tourHoles"><rect width="100%" height="100%" fill="#fff"/></mask></defs><rect class="dim" width="100%" height="100%" mask="url(#tourHoles)"/></svg><div id="tourNotes"></div><div id="tourCard"></div></div>
 <input id="file" type="file" multiple hidden>
 
 <script type="module">
@@ -419,8 +521,8 @@ sun.position.set(5, 10, 7);
 scene.add(sun);
 
 const THEMES = {
-  dark:  { bg: 0x1b1b1a, grid: 0x3a3936, grid2: 0x262624, label: '#e8e6e1' },
-  light: { bg: 0xeeece7, grid: 0xc9c5bc, grid2: 0xdedad2, label: '#1d1d1b' },
+  dark:  { bg: 0x151517, grid: 0x34343a, grid2: 0x222226, label: '#f5f5f7' },
+  light: { bg: 0xf4f0e8, grid: 0xd2cabc, grid2: 0xe7e1d6, label: '#1d1d1f' },
 };
 let theme = 'dark';
 let grid;
@@ -2271,7 +2373,10 @@ const step = d => { if (!exhibits.length) return; const i = selected ? exhibits.
 $('#tPrev').onclick = () => step(-1);
 $('#tNext').onclick = () => step(1);
 $('#tOverview').onclick = () => overview();
-document.querySelectorAll('.fold').forEach(h => h.onclick = () => h.parentElement.classList.toggle('folded'));
+document.querySelectorAll('.fold').forEach(h => h.onclick = e => { e.stopPropagation(); h.parentElement.classList.toggle('folded'); });
+$('#list').addEventListener('click', () => $('#list').classList.remove('folded'));  // the folded tab opens wherever it is clicked
+const placePanels = () => document.documentElement.style.setProperty('--top', Math.round($('#bar').getBoundingClientRect().bottom + 10) + 'px');
+placePanels(); addEventListener('resize', placePanels); new ResizeObserver(placePanels).observe($('#bar'));
 // phones start with the panels folded, so the models get the screen
 if (matchMedia('(max-width: 640px)').matches) { $('#list').classList.add('folded'); $('#detail').classList.add('folded'); }
 function readBudget() {
@@ -2392,6 +2497,77 @@ renderer.setAnimationLoop(() => {
   snapRequest?.();
   if (erasing) updateBrush();
 });
+
+// ---------- first steps: numbered notes with arrows over a darkened screen; ? shows them again ----------
+const TOUR = [
+  { main: 1, el: () => $('#bAdd'), side: 'bottom', t: 'Add', s: 'drop splats, point clouds or meshes anywhere on the page, or click here.' },
+  { main: 1, el: () => dom, side: 'inside', t: 'Walk through', s: 'drag to orbit · W A S D to fly · double-click an exhibit to fly to it.' },
+  { main: 1, el: () => $('#floatSwitch'), side: 'bottom', t: 'Remove floaters', s: 'takes loose splats and sky domes out of every scan.' },
+  { el: () => $('#list:not(.hidden)'), side: 'right', t: 'Exhibition', s: 'every exhibit · click to select, erase floaters by hand.' },
+  { el: () => $('#bSave'), side: 'bottom', t: 'Save', s: 'everything as one .zip · drop it here to open it again.' },
+  { el: () => $('#bPublish'), side: 'bottom', t: 'Publish', s: 'online for a few days, as a link to share.' },
+  { el: () => $('#bMenu'), side: 'bottom', t: 'Settings', s: 'view, detail, points, gumball and all keys.' },
+];
+let tourMore = false;
+function showTour() {
+  toggleMenu(false); toggleLibrary(false); togglePublish(false);
+  const tour = $('#tour'), svg = $('#tourSvg'), holes = $('#tourHoles'), notes = $('#tourNotes'), card = $('#tourCard');
+  tour.classList.remove('hidden');
+  svg.querySelectorAll('.ring, .arrow').forEach(n => n.remove()); holes.querySelectorAll('.hole').forEach(n => n.remove()); notes.textContent = '';
+  const NS = 'http://www.w3.org/2000/svg', mk = (parent, tag, a) => { const n = document.createElementNS(NS, tag); for (const k in a) n.setAttribute(k, a[k]); parent.append(n); return n; };
+  card.innerHTML = '<h3>An exhibition in 3 steps</h3>';
+  const items = [];
+  let n = 0;
+  for (const h of TOUR) {
+    if (!h.main && !tourMore) continue;
+    const el = h.el(); if (!el) continue;
+    const r0 = el.getBoundingClientRect(); if (!r0.width || r0.bottom < 0 || r0.top > innerHeight) continue;
+    n++;
+    if (!h.main && !card.querySelector('h3.more')) card.insertAdjacentHTML('beforeend', '<h3 class="more">Also useful</h3>');
+    const it = { inside: h.side === 'inside' };
+    const pad = it.inside ? 0 : 5, r = { l: r0.left - pad, t: r0.top - pad, w: r0.width + 2 * pad, h: r0.height + 2 * pad }; r.r = r.l + r.w; r.b = r.t + r.h;
+    const rad = Math.min(20, r.h / 2);
+    if (!it.inside) it.hole = mk(holes, 'rect', { class: 'hole', x: r.l, y: r.t, width: r.w, height: r.h, rx: rad, fill: '#000' });
+    if (!it.inside) it.ring = mk(svg, 'rect', { class: 'ring', x: r.l, y: r.t, width: r.w, height: r.h, rx: rad });
+    const p = document.createElement('p'); p.innerHTML = `<b class="hnum">${n}</b><span><b></b> — <i></i></span>`;
+    p.querySelector('span b').textContent = h.t; p.querySelector('span i').textContent = h.s; card.append(p); it.line = p;
+    const lab = document.createElement('div'); lab.className = 'hl'; lab.innerHTML = `<b class="hnum">${n}</b>`; lab.append(h.t); notes.append(lab); it.lab = lab;
+    const w = lab.offsetWidth, hh = lab.offsetHeight, GAP = 44, cx = r.l + r.w / 2, cy = r.t + Math.min(r.h / 2, 90);
+    let x, y, a, b;
+    if (h.side === 'bottom') { x = cx - w / 2; y = r.b + GAP; a = [cx, y - 4]; b = [cx, r.b + 3]; }
+    else if (h.side === 'right') { x = r.r + GAP; y = cy - hh / 2; a = [x - 4, cy]; b = [r.r + 3, cy]; }
+    else { x = innerWidth - w - 24; y = innerHeight - hh - 24; }
+    lab.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px'; lab.style.top = y + 'px';
+    if (a) it.arrow = mk(svg, 'path', { class: 'arrow', d: `M${a[0]} ${a[1]} L${b[0]} ${b[1]}`, 'marker-end': 'url(#tourArrow)' });
+    items.push(it);
+  }
+  // pointing at a line in the card: only that step stays lit
+  const focus = sel => items.forEach(it => {
+    const on = !sel || it === sel;
+    it.hole?.setAttribute('fill-opacity', on ? 1 : .2);
+    for (const e of [it.ring, it.arrow, it.lab]) if (e) e.style.opacity = on ? 1 : .12;
+    it.lab.style.zIndex = sel && on ? 3 : '';
+    it.line.style.opacity = on ? 1 : .45;
+  });
+  for (const it of items) { it.line.onpointerenter = () => focus(it); it.line.onpointerleave = () => focus(null); }
+  const more = document.createElement('button'); more.className = 'hmore';
+  more.textContent = tourMore ? 'Show only the 3 steps' : 'More: list, save, publish…';
+  more.onclick = e => { e.stopPropagation(); tourMore = !tourMore; showTour(); };
+  card.append(more);
+  card.insertAdjacentHTML('beforeend', '<div class="hhint">Point at a step to see where it is · click outside to close · <b>?</b> shows this again</div>');
+  card.onclick = e => e.stopPropagation();
+  const cw = card.offsetWidth, ch = card.offsetHeight;
+  card.style.left = Math.max(20, (innerWidth - cw) / 2) + 'px';
+  card.style.top = Math.max($('#bar').getBoundingClientRect().bottom + 95, Math.min(innerHeight - ch - 40, (innerHeight - ch) / 2 + 20)) + 'px';
+  try { localStorage.setItem('exhibition.tourSeen', '1'); } catch {}
+}
+const hideTour = () => $('#tour').classList.add('hidden');
+$('#bHelp').onclick = showTour;
+$('#tour').onclick = hideTour;
+addEventListener('keydown', e => { if (e.key === 'Escape') hideTour(); });
+const retour = () => { if (!$('#tour').classList.contains('hidden')) showTour(); };
+addEventListener('resize', retour); new ResizeObserver(retour).observe($('#bar'));  // the Library button may still appear
+try { if (!localStorage.getItem('exhibition.tourSeen') && !new URLSearchParams(location.search).has('open')) setTimeout(() => { if ($('#notice').classList.contains('hidden')) showTour(); }, 1500); } catch {}
 </script>
 </body>
 </html>
